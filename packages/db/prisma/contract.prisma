@@ -1,0 +1,30 @@
+model User {
+  id       Uuid   @id @default(uuid())
+  email    String @unique
+  password String
+  name     String
+  photo    String
+
+  rooms    Room[]
+  chats    Chat[]
+}
+
+model Room {
+  id        Int      @id @default(autoincrement())
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  adminId   Uuid
+
+  admin     User     @relation(fields: [adminId], references: [id])
+  chats     Chat[]
+}
+
+model Chat {
+  id      Int    @id @default(autoincrement())
+  roomId  Int
+  message String
+  userId  Uuid
+
+  room    Room   @relation(fields: [roomId], references: [id])
+  user    User   @relation(fields: [userId], references: [id])
+}
