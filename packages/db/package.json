@@ -4,7 +4,7 @@
   "description": "",
   "type": "module",
   "main": "index.js",
-      "exports": {
+  "exports": {
     ".": "./src/index.ts"
   },
   "scripts": {
@@ -21,6 +21,7 @@
   "license": "ISC",
   "dependencies": {
     "@prisma/orm-postgres": "8.0.0-rc.8",
-    "dotenv": "^17.4.2"
+    "dotenv": "^17.4.2",
+    "temporal-polyfill": "^1.0.4"
   }
 }

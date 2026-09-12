@@ -2,6 +2,7 @@ packages:
   - "apps/*"
   - "packages/*"
 allowBuilds:
+  bcrypt: false
   esbuild: false
   msgpackr-extract: false
   workerd: false

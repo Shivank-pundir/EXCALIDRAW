@@ -216,7 +216,7 @@
                 }
               },
               "photo": {
-                "nullable": false,
+                "nullable": true,
                 "type": {
                   "codecId": "pg/text@1",
                   "kind": "scalar"
@@ -469,7 +469,7 @@
                 "photo": {
                   "codecId": "pg/text@1",
                   "nativeType": "text",
-                  "nullable": false
+                  "nullable": true
                 }
               },
               "foreignKeys": [],
@@ -493,7 +493,7 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "697898a2e80a3fe2141ddab1e02ce56af740f3d6250e6324f57ebbecc1ea69af"
+    "storageHash": "68a5de92931733fa84950ebfd865f87eeb8c3628e3528f39a8e40b0711d81fd6"
   },
   "execution": {
     "executionHash": "c6c68895811eac8510a3105769605e248431b77d0f5294ccf29b9aa8ce355232",
