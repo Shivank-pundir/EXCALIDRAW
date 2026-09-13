@@ -1,30 +1,27 @@
 model User {
-  id       Uuid   @id @default(uuid())
-  email    String @unique
+  id       Uuid    @id @default(uuid())
+  email    String  @unique
   password String
   name     String
   photo    String?
 
-  rooms    Room[]
+  rooms    Room[]  @relation("RoomAdmin")
   chats    Chat[]
 }
-
 model Room {
-  id        Int      @id @default(autoincrement())
-  slug      String   @unique
-  createdAt DateTime @default(now())
-  adminId   Uuid
+  slug    String @id        // <-- slug is now the primary key, no separate Int id
+  adminId Uuid
 
-  admin     User     @relation(fields: [adminId], references: [id])
-  chats     Chat[]
+  admin   User    @relation("RoomAdmin", fields: [adminId], references: [id])
+  chats   Chat[]
 }
 
 model Chat {
   id      Int    @id @default(autoincrement())
-  roomId  Int
-  message String
+  roomId  String            // <-- now matches Room.slug directly
   userId  Uuid
+  message String
 
-  room    Room   @relation(fields: [roomId], references: [id])
-  user    User   @relation(fields: [userId], references: [id])
+  room    Room    @relation(fields: [roomId], references: [slug])
+  user    User    @relation(fields: [userId], references: [id])
 }

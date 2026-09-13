@@ -33,7 +33,7 @@ import type {
 } from '@prisma/orm-postgres/contract/types';
 
 export type StorageHash =
-  StorageHashBase<'68a5de92931733fa84950ebfd865f87eeb8c3628e3528f39a8e40b0711d81fd6'>;
+  StorageHashBase<'8f73fa3d3b8e11bb3b84c0ce14bca967bde474f9aee9a5216561682ed6debee4'>;
 export type ExecutionHash =
   ExecutionHashBase<'c6c68895811eac8510a3105769605e248431b77d0f5294ccf29b9aa8ce355232'>;
 export type ProfileHash =
@@ -243,14 +243,12 @@ export type FieldOutputTypes = {
   readonly public: {
     readonly Chat: {
       readonly id: CodecTypes['pg/int4@1']['output'];
-      readonly roomId: CodecTypes['pg/int4@1']['output'];
-      readonly message: CodecTypes['pg/text@1']['output'];
+      readonly roomId: CodecTypes['pg/text@1']['output'];
       readonly userId: CodecTypes['pg/uuid@1']['output'];
+      readonly message: CodecTypes['pg/text@1']['output'];
     };
     readonly Room: {
-      readonly id: CodecTypes['pg/int4@1']['output'];
       readonly slug: CodecTypes['pg/text@1']['output'];
-      readonly createdAt: CodecTypes['pg/timestamptz-temporal@1']['output'];
       readonly adminId: CodecTypes['pg/uuid@1']['output'];
     };
     readonly User: {
@@ -266,14 +264,12 @@ export type FieldInputTypes = {
   readonly public: {
     readonly Chat: {
       readonly id: CodecTypes['pg/int4@1']['input'];
-      readonly roomId: CodecTypes['pg/int4@1']['input'];
-      readonly message: CodecTypes['pg/text@1']['input'];
+      readonly roomId: CodecTypes['pg/text@1']['input'];
       readonly userId: CodecTypes['pg/uuid@1']['input'];
+      readonly message: CodecTypes['pg/text@1']['input'];
     };
     readonly Room: {
-      readonly id: CodecTypes['pg/int4@1']['input'];
       readonly slug: CodecTypes['pg/text@1']['input'];
-      readonly createdAt: CodecTypes['pg/timestamptz-temporal@1']['input'];
       readonly adminId: CodecTypes['pg/uuid@1']['input'];
     };
     readonly User: {
@@ -290,13 +286,11 @@ export type StorageColumnTypes = {
     readonly chat: {
       readonly id: CodecTypes['pg/int4@1']['output'];
       readonly message: CodecTypes['pg/text@1']['output'];
-      readonly roomId: CodecTypes['pg/int4@1']['output'];
+      readonly roomId: CodecTypes['pg/text@1']['output'];
       readonly userId: CodecTypes['pg/uuid@1']['output'];
     };
     readonly room: {
       readonly adminId: CodecTypes['pg/uuid@1']['output'];
-      readonly createdAt: CodecTypes['pg/timestamptz-temporal@1']['output'];
-      readonly id: CodecTypes['pg/int4@1']['output'];
       readonly slug: CodecTypes['pg/text@1']['output'];
     };
     readonly user: {
@@ -313,13 +307,11 @@ export type StorageColumnInputTypes = {
     readonly chat: {
       readonly id: CodecTypes['pg/int4@1']['input'];
       readonly message: CodecTypes['pg/text@1']['input'];
-      readonly roomId: CodecTypes['pg/int4@1']['input'];
+      readonly roomId: CodecTypes['pg/text@1']['input'];
       readonly userId: CodecTypes['pg/uuid@1']['input'];
     };
     readonly room: {
       readonly adminId: CodecTypes['pg/uuid@1']['input'];
-      readonly createdAt: CodecTypes['pg/timestamptz-temporal@1']['input'];
-      readonly id: CodecTypes['pg/int4@1']['input'];
       readonly slug: CodecTypes['pg/text@1']['input'];
     };
     readonly user: {
@@ -361,11 +353,6 @@ type ContractBase = Omit<
                   };
                 };
                 readonly roomId: {
-                  readonly nativeType: 'int4';
-                  readonly codecId: 'pg/int4@1';
-                  readonly nullable: false;
-                };
-                readonly message: {
                   readonly nativeType: 'text';
                   readonly codecId: 'pg/text@1';
                   readonly nullable: false;
@@ -373,6 +360,11 @@ type ContractBase = Omit<
                 readonly userId: {
                   readonly nativeType: 'uuid';
                   readonly codecId: 'pg/uuid@1';
+                  readonly nullable: false;
+                };
+                readonly message: {
+                  readonly nativeType: 'text';
+                  readonly codecId: 'pg/text@1';
                   readonly nullable: false;
                 };
               };
@@ -402,7 +394,7 @@ type ContractBase = Omit<
                   readonly target: {
                     readonly namespaceId: 'public' & NamespaceId;
                     readonly tableName: 'room';
-                    readonly columns: readonly ['id'];
+                    readonly columns: readonly ['slug'];
                   };
                 },
                 {
@@ -421,25 +413,10 @@ type ContractBase = Omit<
             };
             readonly room: {
               columns: {
-                readonly id: {
-                  readonly nativeType: 'int4';
-                  readonly codecId: 'pg/int4@1';
-                  readonly nullable: false;
-                  readonly default: {
-                    readonly kind: 'function';
-                    readonly expression: 'autoincrement()';
-                  };
-                };
                 readonly slug: {
                   readonly nativeType: 'text';
                   readonly codecId: 'pg/text@1';
                   readonly nullable: false;
-                };
-                readonly createdAt: {
-                  readonly nativeType: 'timestamptz';
-                  readonly codecId: 'pg/timestamptz-temporal@1';
-                  readonly nullable: false;
-                  readonly default: { readonly kind: 'function'; readonly expression: 'now()' };
                 };
                 readonly adminId: {
                   readonly nativeType: 'uuid';
@@ -447,8 +424,8 @@ type ContractBase = Omit<
                   readonly nullable: false;
                 };
               };
-              primaryKey: { readonly columns: readonly ['id'] };
-              uniques: readonly [{ readonly columns: readonly ['slug'] }];
+              primaryKey: { readonly columns: readonly ['slug'] };
+              uniques: readonly [];
               indexes: readonly [
                 {
                   readonly name: 'room_adminId_idx_530179db';
@@ -532,15 +509,15 @@ type ContractBase = Omit<
               };
               readonly roomId: {
                 readonly nullable: false;
-                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/int4@1' };
-              };
-              readonly message: {
-                readonly nullable: false;
                 readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
               };
               readonly userId: {
                 readonly nullable: false;
                 readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/uuid@1' };
+              };
+              readonly message: {
+                readonly nullable: false;
+                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
               };
             };
             readonly relations: {
@@ -549,7 +526,7 @@ type ContractBase = Omit<
                 readonly cardinality: 'N:1';
                 readonly on: {
                   readonly localFields: readonly ['roomId'];
-                  readonly targetFields: readonly ['id'];
+                  readonly targetFields: readonly ['slug'];
                 };
               };
               readonly user: {
@@ -567,27 +544,16 @@ type ContractBase = Omit<
               readonly fields: {
                 readonly id: { readonly column: 'id' };
                 readonly roomId: { readonly column: 'roomId' };
-                readonly message: { readonly column: 'message' };
                 readonly userId: { readonly column: 'userId' };
+                readonly message: { readonly column: 'message' };
               };
             };
           };
           readonly Room: {
             readonly fields: {
-              readonly id: {
-                readonly nullable: false;
-                readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/int4@1' };
-              };
               readonly slug: {
                 readonly nullable: false;
                 readonly type: { readonly kind: 'scalar'; readonly codecId: 'pg/text@1' };
-              };
-              readonly createdAt: {
-                readonly nullable: false;
-                readonly type: {
-                  readonly kind: 'scalar';
-                  readonly codecId: 'pg/timestamptz-temporal@1';
-                };
               };
               readonly adminId: {
                 readonly nullable: false;
@@ -607,7 +573,7 @@ type ContractBase = Omit<
                 readonly to: { readonly namespace: 'public' & NamespaceId; readonly model: 'Chat' };
                 readonly cardinality: '1:N';
                 readonly on: {
-                  readonly localFields: readonly ['id'];
+                  readonly localFields: readonly ['slug'];
                   readonly targetFields: readonly ['roomId'];
                 };
               };
@@ -616,9 +582,7 @@ type ContractBase = Omit<
               readonly table: 'room';
               readonly namespaceId: 'public';
               readonly fields: {
-                readonly id: { readonly column: 'id' };
                 readonly slug: { readonly column: 'slug' };
-                readonly createdAt: { readonly column: 'createdAt' };
                 readonly adminId: { readonly column: 'adminId' };
               };
             };

@@ -40,7 +40,7 @@
               "roomId": {
                 "nullable": false,
                 "type": {
-                  "codecId": "pg/int4@1",
+                  "codecId": "pg/text@1",
                   "kind": "scalar"
                 }
               },
@@ -60,7 +60,7 @@
                     "roomId"
                   ],
                   "targetFields": [
-                    "id"
+                    "slug"
                   ]
                 },
                 "to": {
@@ -112,20 +112,6 @@
                   "kind": "scalar"
                 }
               },
-              "createdAt": {
-                "nullable": false,
-                "type": {
-                  "codecId": "pg/timestamptz-temporal@1",
-                  "kind": "scalar"
-                }
-              },
-              "id": {
-                "nullable": false,
-                "type": {
-                  "codecId": "pg/int4@1",
-                  "kind": "scalar"
-                }
-              },
               "slug": {
                 "nullable": false,
                 "type": {
@@ -154,7 +140,7 @@
                 "cardinality": "1:N",
                 "on": {
                   "localFields": [
-                    "id"
+                    "slug"
                   ],
                   "targetFields": [
                     "roomId"
@@ -170,12 +156,6 @@
               "fields": {
                 "adminId": {
                   "column": "adminId"
-                },
-                "createdAt": {
-                  "column": "createdAt"
-                },
-                "id": {
-                  "column": "id"
                 },
                 "slug": {
                   "column": "slug"
@@ -303,8 +283,8 @@
                   "nullable": false
                 },
                 "roomId": {
-                  "codecId": "pg/int4@1",
-                  "nativeType": "int4",
+                  "codecId": "pg/text@1",
+                  "nativeType": "text",
                   "nullable": false
                 },
                 "userId": {
@@ -324,7 +304,7 @@
                   },
                   "target": {
                     "columns": [
-                      "id"
+                      "slug"
                     ],
                     "namespaceId": "public",
                     "tableName": "room"
@@ -379,24 +359,6 @@
                   "nativeType": "uuid",
                   "nullable": false
                 },
-                "createdAt": {
-                  "codecId": "pg/timestamptz-temporal@1",
-                  "default": {
-                    "expression": "now()",
-                    "kind": "function"
-                  },
-                  "nativeType": "timestamptz",
-                  "nullable": false
-                },
-                "id": {
-                  "codecId": "pg/int4@1",
-                  "default": {
-                    "expression": "autoincrement()",
-                    "kind": "function"
-                  },
-                  "nativeType": "int4",
-                  "nullable": false
-                },
                 "slug": {
                   "codecId": "pg/text@1",
                   "nativeType": "text",
@@ -433,16 +395,10 @@
               ],
               "primaryKey": {
                 "columns": [
-                  "id"
+                  "slug"
                 ]
               },
-              "uniques": [
-                {
-                  "columns": [
-                    "slug"
-                  ]
-                }
-              ]
+              "uniques": []
             },
             "user": {
               "columns": {
@@ -493,7 +449,7 @@
         "kind": "postgres-schema"
       }
     },
-    "storageHash": "68a5de92931733fa84950ebfd865f87eeb8c3628e3528f39a8e40b0711d81fd6"
+    "storageHash": "8f73fa3d3b8e11bb3b84c0ce14bca967bde474f9aee9a5216561682ed6debee4"
   },
   "execution": {
     "executionHash": "c6c68895811eac8510a3105769605e248431b77d0f5294ccf29b9aa8ce355232",
