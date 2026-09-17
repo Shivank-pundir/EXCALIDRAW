@@ -1,0 +1,49 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model chat {
+  id      Int    @id @default(autoincrement())
+  message String
+  roomId  String
+  userId  String @db.Uuid
+  room    room   @relation(fields: [roomId], references: [slug], onDelete: NoAction, onUpdate: NoAction)
+  user    user   @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([roomId], map: "chat_roomId_idx_fe51d647")
+  @@index([userId], map: "chat_userId_idx_a489d58a")
+}
+
+model room {
+  adminId String @db.Uuid
+  slug    String @id
+
+  chat    chat[]
+  user    user     @relation(fields: [adminId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  drawing drawing?
+
+  @@index([adminId], map: "room_adminId_idx_530179db")
+}
+
+model drawing {
+  id        Int      @id @default(autoincrement())
+  roomId    String   @unique
+  data      Json
+  updatedAt DateTime @updatedAt
+
+  room room @relation(fields: [roomId], references: [slug], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model user {
+  email    String  @unique
+  id       String  @id @db.Uuid
+  name     String
+  password String
+  photo    String?
+  chat     chat[]
+  room     room[]
+}

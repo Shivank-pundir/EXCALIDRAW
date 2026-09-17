@@ -1,0 +1,31 @@
+{
+  "name": "@repo/db-stable",
+  "version": "1.0.0",
+  "description": "Stable Prisma database package",
+  "main": "src/client.ts",
+  "exports": {
+    ".": "./src/client.ts"
+  },
+  "scripts": {
+    "db:generate": "prisma generate --config ./prisma7.config.ts",
+    "db:validate": "prisma validate --config ./prisma7.config.ts",
+    "db:migrate": "prisma migrate dev --config ./prisma7.config.ts",
+    "db:studio": "prisma studio --config ./prisma7.config.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
+    "dotenv": "^17.4.2",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.4.1",
+    "@types/pg": "^8.23.1",
+    "prisma": "7.10.0",
+    "tsx": "^4.23.13"
+  }
+}

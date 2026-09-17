@@ -1,38 +1,67 @@
-import express, { type Request, type Response } from "express";
+import express, {
+  type Request,
+  type Response,
+} from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
+import cors from "cors";
+import { randomUUID } from "node:crypto";
 
-import { db } from "@repo/db";
+import { prisma } from "@repo/db-stable";
 import { jwt_secret } from "@repo/backend-common/config";
-import {
-  CreateUserSchema,
-  siginSchema,
-  createRoomSchema,
-} from "@repo/common/types";
+import { siginSchema } from "@repo/common/types";
 
 import { middleware } from "./middleware";
 
 const app = express();
 
+/* ----------------------------- MIDDLEWARE ----------------------------- */
+
+app.use(
+  cors({
+    origin: [
+      "http://localhost:3001",
+      "http://127.0.0.1:3001",
+    ],
+  }),
+);
+
 app.use(express.json());
 
-//signup
+/* ----------------------------- HELPERS ----------------------------- */
+
+function createRoomSlug(name: string) {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "");
+}
+
+/* ----------------------------- SIGNUP ----------------------------- */
+
 app.post("/signup", async (req: Request, res: Response) => {
-  const parsedData = CreateUserSchema.safeParse(req.body);
-
-  if (!parsedData.success) {
-    return res.status(400).json({
-      message: "Invalid signup input",
-      errors: parsedData.error.flatten(),
-    });
-  }
-
   try {
-    const { username, password, name } = parsedData.data;
+    const { username, password, name } = req.body;
 
-    const existingUser = await db.orm.public.User.where({
-      email: username,
-    }).first();
+    if (
+      !username ||
+      typeof username !== "string" ||
+      !password ||
+      typeof password !== "string" ||
+      !name ||
+      typeof name !== "string"
+    ) {
+      return res.status(400).json({
+        message: "All fields are required",
+      });
+    }
+
+    const existingUser = await prisma.user.findUnique({
+      where: {
+        email: username,
+      },
+    });
 
     if (existingUser) {
       return res.status(409).json({
@@ -42,15 +71,33 @@ app.post("/signup", async (req: Request, res: Response) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const user = await db.orm.public.User.create({
-      email: username,
-      password: hashedPassword,
-      name,
+    const user = await prisma.user.create({
+      data: {
+        id: randomUUID(),
+        email: username,
+        password: hashedPassword,
+        name,
+      },
     });
 
+    const token = jwt.sign(
+      {
+        userId: user.id,
+      },
+      jwt_secret,
+      {
+        expiresIn: "7d",
+      },
+    );
+
     return res.status(201).json({
-      message: "Signup successful",
-      userId: user.id,
+      message: "User created successfully",
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+      },
     });
   } catch (error) {
     console.error("SIGNUP ERROR:", error);
@@ -61,8 +108,8 @@ app.post("/signup", async (req: Request, res: Response) => {
   }
 });
 
+/* ----------------------------- SIGNIN ----------------------------- */
 
-//signin
 app.post("/signin", async (req: Request, res: Response) => {
   const parsedData = siginSchema.safeParse(req.body);
 
@@ -76,9 +123,11 @@ app.post("/signin", async (req: Request, res: Response) => {
   try {
     const { username, password } = parsedData.data;
 
-    const user = await db.orm.public.User.where({
-      email: username,
-    }).first();
+    const user = await prisma.user.findUnique({
+      where: {
+        email: username,
+      },
+    });
 
     if (!user) {
       return res.status(401).json({
@@ -110,6 +159,11 @@ app.post("/signin", async (req: Request, res: Response) => {
     return res.status(200).json({
       message: "Signin successful",
       token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+      },
     });
   } catch (error) {
     console.error("SIGNIN ERROR:", error);
@@ -120,89 +174,71 @@ app.post("/signin", async (req: Request, res: Response) => {
   }
 });
 
-//get toom chat
-
-app.get("/chats/:roomId", async (req, res) => {
-  try {
-    const roomId = req.params.roomId;
-
-    const messages = await db.orm.public.Chat
-      .where({
-        roomId,
-      })
-      .all();
-
-    res.status(200).json({
-      messages,
-    });
-  } catch (error) {
-    console.error("Failed to fetch chats:", error);
-
-    res.status(500).json({
-      message: "Failed to fetch chats",
-    });
-  }
-});
-
-
-  // CREATE ROOM    
-
+/* ----------------------------- CREATE ROOM ----------------------------- */
 
 app.post(
   "/room",
   middleware,
   async (req: Request, res: Response) => {
-    const parsedData = createRoomSchema.safeParse(req.body);
-
-    if (!parsedData.success) {
-      return res.status(400).json({
-        message: "Invalid room input",
-        errors: parsedData.error.flatten(),
-      });
-    }
-
     try {
-      const userId = req.userId;
+      const { name } = req.body;
 
-      if (!userId) {
-        return res.status(401).json({
-          message: "Not authorized",
+      if (!name || typeof name !== "string") {
+        return res.status(400).json({
+          message: "Room name is required",
         });
       }
 
-      const { name } = parsedData.data;
+      const cleanName = name.trim();
+      const slug = createRoomSlug(cleanName);
 
-      const existingRoom = await db.orm.public.Room.where({
-        slug: name,
-      }).first();
+      if (!slug) {
+        return res.status(400).json({
+          message: "Please enter a valid room name",
+        });
+      }
+
+      console.log("CREATE ROOM:", {
+        originalName: cleanName,
+        slug,
+        adminId: req.userId,
+      });
+
+      const existingRoom = await prisma.room.findUnique({
+        where: {
+          slug,
+        },
+      });
 
       if (existingRoom) {
         return res.status(409).json({
-          message: "Room name already exists",
+          message: "Room already exists",
         });
       }
 
-      const room = await db.orm.public.Room.create({
-        slug: name,
-        adminId: userId,
+      const room = await prisma.room.create({
+        data: {
+          slug,
+          adminId: req.userId,
+        },
       });
+
+      console.log("ROOM CREATED:", room.slug);
 
       return res.status(201).json({
         message: "Room created successfully",
-        roomId: room.id,
-        room,
+        room: {
+          slug: room.slug,
+          adminId: room.adminId,
+        },
       });
     } catch (error: any) {
       console.error("CREATE ROOM ERROR:", error);
 
-      // PostgreSQL duplicate key error fallback
-      if (
-        error?.sqlState === "23505" ||
-        error?.cause?.sqlState === "23505" ||
-        error?.cause?.code === "23505"
-      ) {
+      // Prisma unique constraint error
+      if (error?.code === "P2002") {
         return res.status(409).json({
-          message: "Room name already exists",
+          message: "Room already exists",
         });
       }
 
@@ -213,8 +249,252 @@ app.post(
   },
 );
 
-     
+/* ----------------------------- GET MY ROOMS ----------------------------- */
 
+app.get(
+  "/rooms",
+  middleware,
+  async (req: Request, res: Response) => {
+    try {
+      const rooms = await prisma.room.findMany({
+        where: {
+          adminId: req.userId,
+        },
+        orderBy: {
+          slug: "asc",
+        },
+        select: {
+          slug: true,
+          adminId: true,
+        },
+      });
+
+      return res.status(200).json({
+        rooms,
+      });
+    } catch (error) {
+      console.error("GET ROOMS ERROR:", error);
+
+      return res.status(500).json({
+        message: "Failed to fetch rooms",
+      });
+    }
+  },
+);
+
+/* ----------------------------- JOIN/FIND ROOM ----------------------------- */
+
+app.get(
+  "/room/:roomId",
+  middleware,
+  async (req: Request, res: Response) => {
+    try {
+      const receivedRoomId = req.params.roomId;
+
+      if (
+        typeof receivedRoomId !== "string" ||
+        receivedRoomId.trim().length === 0
+      ) {
+        return res.status(400).json({
+          message: "Room ID is required",
+        });
+      }
+
+      const roomId = decodeURIComponent(
+        receivedRoomId,
+      ).trim();
+
+      console.log("JOIN ROOM:", {
+        receivedRoomId,
+        searchingFor: roomId,
+      });
+
+      const room = await prisma.room.findUnique({
+        where: {
+          slug: roomId,
+        },
+      });
+
+      if (!room) {
+        return res.status(404).json({
+          message: "Room does not exist",
+        });
+      }
+
+      return res.status(200).json({
+        message: "Room found",
+        room: {
+          slug: room.slug,
+          adminId: room.adminId,
+        },
+      });
+    } catch (error) {
+      console.error("JOIN ROOM ERROR:", error);
+
+      return res.status(500).json({
+        message: "Failed to join room",
+      });
+    }
+  },
+);
+
+/* ----------------------------- GET ROOM CHATS ----------------------------- */
+
+app.get(
+  "/chats/:roomId",
+  async (req: Request, res: Response) => {
+    try {
+      const receivedRoomId = req.params.roomId;
+
+      if (
+        typeof receivedRoomId !== "string" ||
+        receivedRoomId.trim().length === 0
+      ) {
+        return res.status(400).json({
+          message: "Valid roomId is required",
+        });
+      }
+
+      const roomId = decodeURIComponent(
+        receivedRoomId,
+      ).trim();
+
+      const messages = await prisma.chat.findMany({
+        where: {
+          roomId,
+        },
+        orderBy: {
+          id: "asc",
+        },
+      });
+
+      return res.status(200).json({
+        messages,
+      });
+    } catch (error) {
+      console.error("FAILED TO FETCH CHATS:", error);
+
+      return res.status(500).json({
+        message: "Failed to fetch chats",
+      });
+    }
+  },
+);
+
+/* ----------------------------- GET ROOM DRAWING ----------------------------- */
+
+app.get(
+  "/drawing/:roomId",
+  async (req: Request, res: Response) => {
+    try {
+      const receivedRoomId = req.params.roomId;
+
+      if (
+        typeof receivedRoomId !== "string" ||
+        receivedRoomId.trim().length === 0
+      ) {
+        return res.status(400).json({
+          message: "Valid roomId is required",
+        });
+      }
+
+      const roomId = decodeURIComponent(
+        receivedRoomId,
+      ).trim();
+
+      const drawing = await prisma.drawing.findUnique({
+        where: {
+          roomId,
+        },
+      });
+
+      return res.status(200).json({
+        drawing,
+      });
+    } catch (error) {
+      console.error("FAILED TO FETCH DRAWING:", error);
+
+      return res.status(500).json({
+        message: "Failed to fetch drawing",
+      });
+    }
+  },
+);
+
+/* ----------------------------- SAVE/UPDATE DRAWING ----------------------------- */
+
+app.put(
+  "/drawing/:roomId",
+  middleware,
+  async (req: Request, res: Response) => {
+    try {
+      const receivedRoomId = req.params.roomId;
+      const drawingData = req.body;
+
+      if (
+        typeof receivedRoomId !== "string" ||
+        receivedRoomId.trim().length === 0
+      ) {
+        return res.status(400).json({
+          message: "Valid roomId is required",
+        });
+      }
+
+      if (
+        !drawingData ||
+        typeof drawingData !== "object" ||
+        Array.isArray(drawingData)
+      ) {
+        return res.status(400).json({
+          message: "Invalid drawing data",
+        });
+      }
+
+      const roomId = decodeURIComponent(
+        receivedRoomId,
+      ).trim();
+
+      // Confirm that the room exists before saving the drawing
+      const existingRoom = await prisma.room.findUnique({
+        where: {
+          slug: roomId,
+        },
+      });
+
+      if (!existingRoom) {
+        return res.status(404).json({
+          message: "Room does not exist",
+        });
+      }
+
+      const drawing = await prisma.drawing.upsert({
+        where: {
+          roomId,
+        },
+        update: {
+          data: drawingData,
+        },
+        create: {
+          roomId,
+          data: drawingData,
+        },
+      });
+
+      return res.status(200).json({
+        message: "Drawing saved successfully",
+        drawing,
+      });
+    } catch (error) {
+      console.error("SAVE DRAWING ERROR:", error);
+
+      return res.status(500).json({
+        message: "Failed to save drawing",
+      });
+    }
+  },
+);
+
+/* ----------------------------- HEALTH CHECK ----------------------------- */
 
 app.get("/", (_req: Request, res: Response) => {
   return res.status(200).json({
@@ -222,9 +502,9 @@ app.get("/", (_req: Request, res: Response) => {
   });
 });
 
+/* ----------------------------- SERVER ----------------------------- */
 
-
-const PORT = 3001;
+const PORT = 4000;
 
 app.listen(PORT, () => {
   console.log(`HTTP server running on port ${PORT}`);

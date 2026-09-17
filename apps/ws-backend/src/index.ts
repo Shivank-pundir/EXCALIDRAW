@@ -2,7 +2,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import jwt from "jsonwebtoken";
 
 import { jwt_secret } from "@repo/backend-common/config";
-import { db } from "@repo/db";
+import { prisma } from "@repo/db-stable";
 
 /* -------------------------------------------------------------------------- */
 /*                                    TYPES                                   */
@@ -47,10 +47,6 @@ type IncomingMessage =
 
 const PORT = 8080;
 
-/**
- * Map key: WebSocket connection
- * Map value: connected user information
- */
 const connectedUsers = new Map<WebSocket, ConnectedUser>();
 
 const wss = new WebSocketServer({
@@ -59,6 +55,9 @@ const wss = new WebSocketServer({
 
 console.log(`WebSocket server running on port ${PORT}`);
 
+/* -------------------------------------------------------------------------- */
+/*                                  HELPERS                                   */
+/* -------------------------------------------------------------------------- */
 
 function sendMessage(ws: WebSocket, data: object): void {
   if (ws.readyState !== WebSocket.OPEN) {
@@ -102,7 +101,9 @@ function removeUserFromRoom(
   return user.rooms.delete(roomId);
 }
 
-function getUserFromSocket(ws: WebSocket): ConnectedUser | undefined {
+function getUserFromSocket(
+  ws: WebSocket,
+): ConnectedUser | undefined {
   return connectedUsers.get(ws);
 }
 
@@ -127,7 +128,9 @@ function getUserIdFromToken(token: string): string {
   return userId;
 }
 
-function isIncomingMessage(value: unknown): value is IncomingMessage {
+function isIncomingMessage(
+  value: unknown,
+): value is IncomingMessage {
   if (!value || typeof value !== "object") {
     return false;
   }
@@ -156,7 +159,9 @@ function isIncomingMessage(value: unknown): value is IncomingMessage {
   return false;
 }
 
-
+/* -------------------------------------------------------------------------- */
+/*                                JOIN ROOM                                   */
+/* -------------------------------------------------------------------------- */
 
 async function handleJoinRoom(
   ws: WebSocket,
@@ -170,9 +175,11 @@ async function handleJoinRoom(
     return;
   }
 
-  const room = await db.orm.public.Room.where({
-    slug: cleanRoomId,
-  }).first();
+  const room = await prisma.room.findUnique({
+    where: {
+      slug: cleanRoomId,
+    },
+  });
 
   if (!room) {
     sendError(ws, "Room not found", cleanRoomId);
@@ -211,6 +218,10 @@ async function handleJoinRoom(
     `User ${user.userId} joined room ${cleanRoomId}`,
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/*                                LEAVE ROOM                                  */
+/* -------------------------------------------------------------------------- */
 
 async function handleLeaveRoom(
   ws: WebSocket,
@@ -253,6 +264,10 @@ async function handleLeaveRoom(
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/*                                GET CHATS                                   */
+/* -------------------------------------------------------------------------- */
+
 async function handleGetChats(
   ws: WebSocket,
   user: ConnectedUser,
@@ -275,9 +290,25 @@ async function handleGetChats(
     return;
   }
 
-  const messages = await db.orm.public.Chat.where({
-    roomId: cleanRoomId,
-  }).all();
+  const room = await prisma.room.findUnique({
+    where: {
+      slug: cleanRoomId,
+    },
+  });
+
+  if (!room) {
+    sendError(ws, "Room not found", cleanRoomId);
+    return;
+  }
+
+  const messages = await prisma.chat.findMany({
+    where: {
+      roomId: cleanRoomId,
+    },
+    orderBy: {
+      id: "asc",
+    },
+  });
 
   sendMessage(ws, {
     type: "room_chats",
@@ -285,6 +316,10 @@ async function handleGetChats(
     messages,
   });
 }
+
+/* -------------------------------------------------------------------------- */
+/*                                  CHAT                                      */
+/* -------------------------------------------------------------------------- */
 
 async function handleChat(
   ws: WebSocket,
@@ -310,19 +345,23 @@ async function handleChat(
     return;
   }
 
-  const room = await db.orm.public.Room.where({
-    slug: cleanRoomId,
-  }).first();
+  const room = await prisma.room.findUnique({
+    where: {
+      slug: cleanRoomId,
+    },
+  });
 
   if (!room) {
     sendError(ws, "Room not found", cleanRoomId);
     return;
   }
 
-  const savedChat = await db.orm.public.Chat.create({
-    roomId: cleanRoomId,
-    message: cleanMessage,
-    userId: user.userId,
+  const savedChat = await prisma.chat.create({
+    data: {
+      roomId: cleanRoomId,
+      message: cleanMessage,
+      userId: user.userId,
+    },
   });
 
   broadcastToRoom(cleanRoomId, {
@@ -338,7 +377,9 @@ async function handleChat(
   );
 }
 
-
+/* -------------------------------------------------------------------------- */
+/*                              WEBSOCKET SERVER                              */
+/* -------------------------------------------------------------------------- */
 
 wss.on("connection", (ws, request) => {
   let userId: string;
@@ -453,10 +494,6 @@ wss.on("connection", (ws, request) => {
     }
   });
 
-  /* ------------------------------------------------------------------------ */
-  /*                              CLOSE HANDLER                               */
-  /* ------------------------------------------------------------------------ */
-
   ws.on("close", () => {
     const currentUser = connectedUsers.get(ws);
 
@@ -465,11 +502,15 @@ wss.on("connection", (ws, request) => {
     }
 
     for (const roomId of currentUser.rooms) {
-      broadcastToRoom(roomId, {
-        type: "user_left",
+      broadcastToRoom(
         roomId,
-        userId: currentUser.userId,
-      }, ws);
+        {
+          type: "user_left",
+          roomId,
+          userId: currentUser.userId,
+        },
+        ws,
+      );
     }
 
     connectedUsers.delete(ws);
