@@ -47,8 +47,17 @@ export default function DashboardPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    const token = localStorage.getItem("token");
+
+    // No session at all — bounce to login immediately instead of
+    // rendering an empty dashboard and only failing later on an action.
+    if (!token || token === "undefined") {
+      toast.error("Please login first");
+      router.replace("/login");
+      return;
+    }
+
     const savedUser = localStorage.getItem("user");
-    const savedRooms = localStorage.getItem("rooms");
 
     // Read user safely
     if (savedUser && savedUser !== "undefined") {
@@ -60,134 +69,190 @@ export default function DashboardPage() {
       }
     }
 
-    // Read rooms safely
-    if (savedRooms && savedRooms !== "undefined") {
+    // Rooms are fetched from the backend, scoped to this user's
+    // adminId, instead of trusted from localStorage — localStorage
+    // is shared by the whole browser, so it isn't safe to use as
+    // the source of truth for "which rooms does THIS user own".
+    async function fetchRooms() {
       try {
-        setRooms(JSON.parse(savedRooms));
+        const response = await axios.get(
+          "http://127.0.0.1:4000/rooms",
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        );
+
+        setRooms(response.data.rooms ?? []);
       } catch (error) {
-        console.error("Invalid rooms data in localStorage:", error);
-        localStorage.removeItem("rooms");
+        console.error("Fetch rooms error:", error);
+
+        if (axios.isAxiosError(error) && error.response?.status === 401) {
+          toast.error("Please login again");
+          router.replace("/login");
+          return;
+        }
+
+        toast.error("Failed to load your rooms");
       }
     }
-  }, []);
+
+    fetchRooms();
+  }, [router]);
 
   function saveRooms(nextRooms: Room[]) {
     setRooms(nextRooms);
-    localStorage.setItem("rooms", JSON.stringify(nextRooms));
   }
 
-const handleCreateRoom = async () => {
-  const cleanRoomName = roomName.trim();
+  const handleCreateRoom = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanRoomName = roomName.trim();
 
-  console.log("Clean room:", cleanRoomName);
-
-  if (!cleanRoomName) {
-    toast.error("Please enter a room name");
-    return;
-  }
-
-  try {
-    setLoading(true);
-
-    const token = localStorage.getItem("token");
-
-    if (!token) {
-      toast.error("Please login again");
-      router.push("/login");
+    if (!cleanRoomName) {
+      toast.error("Please enter a room name");
       return;
     }
 
-    const response = await axios.post(
-      "http://127.0.0.1:4000/room",
-      {
-        name: cleanRoomName,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    );
+    try {
+      setLoading(true);
 
-    const createdRoom = response.data.room;
+      const token = localStorage.getItem("token");
 
-    // Add the newly created room to the dashboard list
-    setRooms((previousRooms) => [
-      createdRoom,
-      ...previousRooms,
-    ]);
-
-    setShowCreateModal(false);
-    setRoomName("");
-
-    toast.success("Room created successfully");
-
-    // Stay on dashboard so the user can see the room
-  } catch (error: any) {
-    console.error("Create room error:", error);
-
-    if (error.response?.status === 409) {
-      toast.error("Room already exists");
-    } else {
-      toast.error(
-        error.response?.data?.message ||
-          "Failed to create room",
-      );
-    }
-  } finally {
-    setLoading(false);
-  }
-};
-const handleJoinRoom = async () => {
-  const cleanRoomId = joinRoomId.trim();
-
-  if (!cleanRoomId) {
-    toast.error("Please enter a room ID");
-    return;
-  }
-
-  try {
-    setJoining(true);
-
-    const token = localStorage.getItem("token");
-
-    if (!token) {
-      toast.error("Please login again");
-      router.push("/login");
-      return;
-    }
-
-    const response = await axios.get(
-      `http://127.0.0.1:4000/room/${encodeURIComponent(cleanRoomId)}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      if (!token) {
+        toast.error("Please login again");
+        router.push("/login");
+        return;
       }
-    );
 
-    const roomSlug = response.data.room.slug;
-
-    toast.success("Room found");
-
-    setShowJoinModal(false);
-    setJoinRoomId("");
-
-    router.push(`/room/${encodeURIComponent(roomSlug)}`);
-  } catch (error: any) {
-    console.error("Join room error:", error);
-
-    if (error.response?.status === 404) {
-      toast.error("Room ID is not valid");
-    } else {
-      toast.error(
-        error.response?.data?.message || "Failed to join room"
+      const response = await axios.post(
+        "http://127.0.0.1:4000/room",
+        {
+          name: cleanRoomName,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
       );
+
+      // Backend returns { slug, name, adminId } once the /room
+      // route saves `name` on the Room model. If your Prisma
+      // schema doesn't have that column yet, response.data.room.name
+      // will be undefined and we fall back to what the user typed.
+      const createdRoom: Room = {
+        slug: response.data.room.slug,
+        name: response.data.room.name ?? cleanRoomName,
+      };
+
+      const updatedRooms = [
+        createdRoom,
+        ...rooms.filter((room) => room.slug !== createdRoom.slug),
+      ];
+
+      saveRooms(updatedRooms);
+
+      setRoomName("");
+      setShowCreateModal(false);
+      setError("");
+
+      toast.success("Room created successfully");
+    } catch (error: unknown) {
+      console.error("Create room error:", error);
+
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status;
+        const message = error.response?.data?.message;
+
+        if (status === 409) {
+          toast.error("Room already exists");
+          setError("Room already exists");
+        } else {
+          toast.error(message || "Failed to create room");
+          setError(message || "Failed to create room");
+        }
+      } else {
+        toast.error("Something went wrong");
+        setError("Something went wrong");
+      }
+    } finally {
+      setLoading(false);
     }
-  } finally {
-    setJoining(false);
-  }
-};
+  };
+
+  const handleJoinRoom = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanRoomId = joinRoomId.trim();
+
+    if (!cleanRoomId) {
+      toast.error("Please enter a room ID");
+      return;
+    }
+
+    try {
+      setJoining(true);
+
+      const token = localStorage.getItem("token");
+
+      if (!token) {
+        toast.error("Please login again");
+        router.push("/login");
+        return;
+      }
+
+      const response = await axios.get(
+        `http://127.0.0.1:4000/room/${encodeURIComponent(cleanRoomId)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      const joinedRoom: Room = {
+        slug: response.data.room.slug,
+        name: response.data.room.name ?? cleanRoomId,
+      };
+
+      // Keep this room in the dashboard list too, so a joined
+      // room (not just created ones) shows up as a card.
+      const updatedRooms = [
+        joinedRoom,
+        ...rooms.filter((room) => room.slug !== joinedRoom.slug),
+      ];
+
+      saveRooms(updatedRooms);
+
+      setJoinRoomId("");
+      setShowJoinModal(false);
+      setError("");
+
+      toast.success("You joined the room");
+
+      router.push(`/room/${encodeURIComponent(joinedRoom.slug)}`);
+    } catch (error: unknown) {
+      console.error("Join room error:", error);
+
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status;
+        const message = error.response?.data?.message;
+
+        if (status === 404) {
+          toast.error("Room doesn't exist");
+          setError("Room doesn't exist");
+        } else {
+          toast.error(message || "Failed to join room");
+          setError(message || "Failed to join room");
+        }
+      } else {
+        toast.error("Something went wrong");
+        setError("Something went wrong");
+      }
+    } finally {
+      setJoining(false);
+    }
+  };
 
   function handleOpenRoom(room: Room) {
     router.push(`/room/${room.slug}`);
@@ -196,6 +261,7 @@ const handleJoinRoom = async () => {
   function handleLogout() {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
+    localStorage.removeItem("rooms"); // clear any leftover rooms from a previous account on this browser
 
     router.replace("/login");
   }

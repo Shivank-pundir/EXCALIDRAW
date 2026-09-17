@@ -4,9 +4,7 @@ import jwt from "jsonwebtoken";
 import { jwt_secret } from "@repo/backend-common/config";
 import { prisma } from "@repo/db-stable";
 
-/* -------------------------------------------------------------------------- */
-/*                                    TYPES                                   */
-/* -------------------------------------------------------------------------- */
+
 
 type ConnectedUser = {
   ws: WebSocket;
@@ -41,9 +39,7 @@ type IncomingMessage =
   | ChatMessage
   | GetChatsMessage;
 
-/* -------------------------------------------------------------------------- */
-/*                                  CONSTANTS                                 */
-/* -------------------------------------------------------------------------- */
+
 
 const PORT = 8080;
 
@@ -55,9 +51,7 @@ const wss = new WebSocketServer({
 
 console.log(`WebSocket server running on port ${PORT}`);
 
-/* -------------------------------------------------------------------------- */
-/*                                  HELPERS                                   */
-/* -------------------------------------------------------------------------- */
+
 
 function sendMessage(ws: WebSocket, data: object): void {
   if (ws.readyState !== WebSocket.OPEN) {
@@ -159,9 +153,7 @@ function isIncomingMessage(
   return false;
 }
 
-/* -------------------------------------------------------------------------- */
-/*                                JOIN ROOM                                   */
-/* -------------------------------------------------------------------------- */
+
 
 async function handleJoinRoom(
   ws: WebSocket,
@@ -219,9 +211,6 @@ async function handleJoinRoom(
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/*                                LEAVE ROOM                                  */
-/* -------------------------------------------------------------------------- */
 
 async function handleLeaveRoom(
   ws: WebSocket,
@@ -264,9 +253,7 @@ async function handleLeaveRoom(
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/*                                GET CHATS                                   */
-/* -------------------------------------------------------------------------- */
+
 
 async function handleGetChats(
   ws: WebSocket,
@@ -317,9 +304,7 @@ async function handleGetChats(
   });
 }
 
-/* -------------------------------------------------------------------------- */
-/*                                  CHAT                                      */
-/* -------------------------------------------------------------------------- */
+
 
 async function handleChat(
   ws: WebSocket,
@@ -377,9 +362,7 @@ async function handleChat(
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/*                              WEBSOCKET SERVER                              */
-/* -------------------------------------------------------------------------- */
+
 
 wss.on("connection", (ws, request) => {
   let userId: string;
@@ -423,9 +406,7 @@ wss.on("connection", (ws, request) => {
     userId,
   });
 
-  /* ------------------------------------------------------------------------ */
-  /*                              MESSAGE HANDLER                             */
-  /* ------------------------------------------------------------------------ */
+ 
 
   ws.on("message", async (rawMessage) => {
     try {
@@ -451,7 +432,7 @@ wss.on("connection", (ws, request) => {
             ws,
             currentUser,
             parsedData.roomId,
-          );
+          ); 
           break;
         }
 

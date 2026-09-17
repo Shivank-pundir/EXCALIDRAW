@@ -21,6 +21,7 @@ model chat {
 model room {
   adminId String @db.Uuid
   slug    String @id
+  name    String
 
   chat    chat[]
   user    user     @relation(fields: [adminId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -28,7 +29,6 @@ model room {
 
   @@index([adminId], map: "room_adminId_idx_530179db")
 }
-
 model drawing {
   id        Int      @id @default(autoincrement())
   roomId    String   @unique

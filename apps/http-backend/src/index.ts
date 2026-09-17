@@ -216,9 +216,11 @@ app.post(
         });
       }
 
+     
       const room = await prisma.room.create({
         data: {
           slug,
+          name: cleanName,
           adminId: req.userId,
         },
       });
@@ -229,6 +231,7 @@ app.post(
         message: "Room created successfully",
         room: {
           slug: room.slug,
+          name: room.name,
           adminId: room.adminId,
         },
       });
@@ -265,6 +268,7 @@ app.get(
         },
         select: {
           slug: true,
+          name: true,
           adminId: true,
         },
       });
@@ -300,9 +304,12 @@ app.get(
         });
       }
 
-      const roomId = decodeURIComponent(
-        receivedRoomId,
-      ).trim();
+      // Slugify the same way creation does, so joining by either
+      // the display name ("My First Room") or the exact slug
+      // ("my-first-room") both resolve to the same lookup key.
+      const roomId = createRoomSlug(
+        decodeURIComponent(receivedRoomId),
+      );
 
       console.log("JOIN ROOM:", {
         receivedRoomId,
@@ -325,6 +332,7 @@ app.get(
         message: "Room found",
         room: {
           slug: room.slug,
+          name: room.name,
           adminId: room.adminId,
         },
       });
