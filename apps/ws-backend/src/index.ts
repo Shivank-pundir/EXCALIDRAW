@@ -4,8 +4,6 @@ import jwt from "jsonwebtoken";
 import { jwt_secret } from "@repo/backend-common/config";
 import { prisma } from "@repo/db-stable";
 
-
-
 type ConnectedUser = {
   ws: WebSocket;
   userId: string;
@@ -33,13 +31,19 @@ type GetChatsMessage = {
   roomId: string;
 };
 
+// NEW: Drawing message
+type DrawingMessage = {
+  type: "drawing";
+  roomId: string;
+  elements: unknown[];
+};
+
 type IncomingMessage =
   | JoinRoomMessage
   | LeaveRoomMessage
   | ChatMessage
-  | GetChatsMessage;
-
-
+  | GetChatsMessage
+  | DrawingMessage;
 
 const PORT = 8080;
 
@@ -51,7 +55,9 @@ const wss = new WebSocketServer({
 
 console.log(`WebSocket server running on port ${PORT}`);
 
-
+/* =========================================================
+   HELPER FUNCTIONS
+========================================================= */
 
 function sendMessage(ws: WebSocket, data: object): void {
   if (ws.readyState !== WebSocket.OPEN) {
@@ -122,6 +128,10 @@ function getUserIdFromToken(token: string): string {
   return userId;
 }
 
+/* =========================================================
+   MESSAGE VALIDATION
+========================================================= */
+
 function isIncomingMessage(
   value: unknown,
 ): value is IncomingMessage {
@@ -150,10 +160,20 @@ function isIncomingMessage(
     );
   }
 
+  // NEW: Validate drawing message
+  if (data.type === "drawing") {
+    return (
+      typeof data.roomId === "string" &&
+      Array.isArray(data.elements)
+    );
+  }
+
   return false;
 }
 
-
+/* =========================================================
+   JOIN ROOM
+========================================================= */
 
 async function handleJoinRoom(
   ws: WebSocket,
@@ -211,6 +231,9 @@ async function handleJoinRoom(
   );
 }
 
+/* =========================================================
+   LEAVE ROOM
+========================================================= */
 
 async function handleLeaveRoom(
   ws: WebSocket,
@@ -253,7 +276,9 @@ async function handleLeaveRoom(
   );
 }
 
-
+/* =========================================================
+   GET CHATS
+========================================================= */
 
 async function handleGetChats(
   ws: WebSocket,
@@ -304,7 +329,9 @@ async function handleGetChats(
   });
 }
 
-
+/* =========================================================
+   CHAT
+========================================================= */
 
 async function handleChat(
   ws: WebSocket,
@@ -362,10 +389,62 @@ async function handleChat(
   );
 }
 
+/* =========================================================
+   DRAWING BROADCAST
+========================================================= */
 
+// NEW: Handle drawing updates
+function handleDrawing(
+  ws: WebSocket,
+  user: ConnectedUser,
+  roomId: string,
+  elements: unknown[],
+): void {
+  const cleanRoomId = roomId.trim();
+
+  if (!cleanRoomId) {
+    sendError(ws, "Room ID is required");
+    return;
+  }
+
+  // Make sure the user is actually inside this room
+  if (!user.rooms.has(cleanRoomId)) {
+    sendError(
+      ws,
+      "You have not joined this room",
+      cleanRoomId,
+    );
+
+    return;
+  }
+
+  // Send drawing to every other user in this room
+  broadcastToRoom(
+    cleanRoomId,
+    {
+      type: "drawing",
+      roomId: cleanRoomId,
+      elements,
+      userId: user.userId,
+    },
+    ws,
+  );
+
+  console.log(
+    `Drawing update from ${user.userId} in room ${cleanRoomId}`,
+  );
+}
+
+/* =========================================================
+   WEBSOCKET CONNECTION
+========================================================= */
 
 wss.on("connection", (ws, request) => {
   let userId: string;
+
+  /* ---------------------------------------------------------
+     AUTHENTICATION
+  --------------------------------------------------------- */
 
   try {
     const url = new URL(
@@ -383,12 +462,19 @@ wss.on("connection", (ws, request) => {
 
     userId = getUserIdFromToken(token);
   } catch (error) {
-    console.error("WebSocket authentication error:", error);
+    console.error(
+      "WebSocket authentication error:",
+      error,
+    );
 
     sendError(ws, "Unauthorized connection");
     ws.close();
     return;
   }
+
+  /* ---------------------------------------------------------
+     CREATE CONNECTED USER
+  --------------------------------------------------------- */
 
   const user: ConnectedUser = {
     ws,
@@ -406,7 +492,9 @@ wss.on("connection", (ws, request) => {
     userId,
   });
 
- 
+  /* ---------------------------------------------------------
+     RECEIVE MESSAGE
+  --------------------------------------------------------- */
 
   ws.on("message", async (rawMessage) => {
     try {
@@ -427,14 +515,23 @@ wss.on("connection", (ws, request) => {
       }
 
       switch (parsedData.type) {
+        /* ---------------------------------------------------
+           JOIN ROOM
+        --------------------------------------------------- */
+
         case "join_room": {
           await handleJoinRoom(
             ws,
             currentUser,
             parsedData.roomId,
-          ); 
+          );
+
           break;
         }
+
+        /* ---------------------------------------------------
+           LEAVE ROOM
+        --------------------------------------------------- */
 
         case "leave_room": {
           await handleLeaveRoom(
@@ -442,8 +539,13 @@ wss.on("connection", (ws, request) => {
             currentUser,
             parsedData.roomId,
           );
+
           break;
         }
+
+        /* ---------------------------------------------------
+           GET CHATS
+        --------------------------------------------------- */
 
         case "get_chats": {
           await handleGetChats(
@@ -451,8 +553,13 @@ wss.on("connection", (ws, request) => {
             currentUser,
             parsedData.roomId,
           );
+
           break;
         }
+
+        /* ---------------------------------------------------
+           CHAT
+        --------------------------------------------------- */
 
         case "chat": {
           await handleChat(
@@ -461,6 +568,22 @@ wss.on("connection", (ws, request) => {
             parsedData.roomId,
             parsedData.message,
           );
+
+          break;
+        }
+
+        /* ---------------------------------------------------
+           DRAWING
+        --------------------------------------------------- */
+
+        case "drawing": {
+          handleDrawing(
+            ws,
+            currentUser,
+            parsedData.roomId,
+            parsedData.elements,
+          );
+
           break;
         }
 
@@ -469,11 +592,18 @@ wss.on("connection", (ws, request) => {
         }
       }
     } catch (error) {
-      console.error("WebSocket message error:", error);
+      console.error(
+        "WebSocket message error:",
+        error,
+      );
 
       sendError(ws, "Failed to process message");
     }
   });
+
+  /* ---------------------------------------------------------
+     CONNECTION CLOSED
+  --------------------------------------------------------- */
 
   ws.on("close", () => {
     const currentUser = connectedUsers.get(ws);
@@ -500,6 +630,10 @@ wss.on("connection", (ws, request) => {
       `User disconnected: ${currentUser.userId}`,
     );
   });
+
+  /* ---------------------------------------------------------
+     WEBSOCKET ERROR
+  --------------------------------------------------------- */
 
   ws.on("error", (error) => {
     console.error(

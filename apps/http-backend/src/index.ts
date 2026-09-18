@@ -15,14 +15,24 @@ import { middleware } from "./middleware";
 
 const app = express();
 
+/* ----------------------------- CONFIG ----------------------------- */
+
+const PORT = 4000;
+
+const FRONTEND_ORIGINS = [
+  "http://localhost:3000",
+  "http://localhost:3001",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:3001",
+];
+
 /* ----------------------------- MIDDLEWARE ----------------------------- */
 
 app.use(
   cors({
-    origin: [
-      "http://localhost:3001",
-      "http://127.0.0.1:3001",
-    ],
+    origin: FRONTEND_ORIGINS,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );
 
@@ -30,12 +40,26 @@ app.use(express.json());
 
 /* ----------------------------- HELPERS ----------------------------- */
 
-function createRoomSlug(name: string) {
+function createRoomSlug(name: string): string {
   return name
     .trim()
     .toLowerCase()
     .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-]/g, "");
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function getRoomSlug(roomId: string): string {
+  return createRoomSlug(decodeURIComponent(roomId));
+}
+
+function isValidObject(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value)
+  );
 }
 
 /* ----------------------------- SIGNUP ----------------------------- */
@@ -57,9 +81,19 @@ app.post("/signup", async (req: Request, res: Response) => {
       });
     }
 
+    const cleanUsername = username.trim().toLowerCase();
+    const cleanName = name.trim();
+
+    if (!cleanUsername || !cleanName || password.length < 6) {
+      return res.status(400).json({
+        message:
+          "Valid name, email and password of at least 6 characters are required",
+      });
+    }
+
     const existingUser = await prisma.user.findUnique({
       where: {
-        email: username,
+        email: cleanUsername,
       },
     });
 
@@ -74,9 +108,9 @@ app.post("/signup", async (req: Request, res: Response) => {
     const user = await prisma.user.create({
       data: {
         id: randomUUID(),
-        email: username,
+        email: cleanUsername,
         password: hashedPassword,
-        name,
+        name: cleanName,
       },
     });
 
@@ -125,7 +159,7 @@ app.post("/signin", async (req: Request, res: Response) => {
 
     const user = await prisma.user.findUnique({
       where: {
-        email: username,
+        email: username.trim().toLowerCase(),
       },
     });
 
@@ -216,7 +250,6 @@ app.post(
         });
       }
 
-     
       const room = await prisma.room.create({
         data: {
           slug,
@@ -238,7 +271,6 @@ app.post(
     } catch (error: any) {
       console.error("CREATE ROOM ERROR:", error);
 
-      // Prisma unique constraint error
       if (error?.code === "P2002") {
         return res.status(409).json({
           message: "Room already exists",
@@ -286,7 +318,7 @@ app.get(
   },
 );
 
-/* ----------------------------- JOIN/FIND ROOM ----------------------------- */
+/* ----------------------------- FIND/JOIN ROOM ----------------------------- */
 
 app.get(
   "/room/:roomId",
@@ -304,12 +336,7 @@ app.get(
         });
       }
 
-      // Slugify the same way creation does, so joining by either
-      // the display name ("My First Room") or the exact slug
-      // ("my-first-room") both resolve to the same lookup key.
-      const roomId = createRoomSlug(
-        decodeURIComponent(receivedRoomId),
-      );
+      const roomId = getRoomSlug(receivedRoomId);
 
       console.log("JOIN ROOM:", {
         receivedRoomId,
@@ -350,6 +377,7 @@ app.get(
 
 app.get(
   "/chats/:roomId",
+  middleware,
   async (req: Request, res: Response) => {
     try {
       const receivedRoomId = req.params.roomId;
@@ -363,9 +391,22 @@ app.get(
         });
       }
 
-      const roomId = decodeURIComponent(
-        receivedRoomId,
-      ).trim();
+      const roomId = getRoomSlug(receivedRoomId);
+
+      const room = await prisma.room.findUnique({
+        where: {
+          slug: roomId,
+        },
+        select: {
+          slug: true,
+        },
+      });
+
+      if (!room) {
+        return res.status(404).json({
+          message: "Room does not exist",
+        });
+      }
 
       const messages = await prisma.chat.findMany({
         where: {
@@ -374,9 +415,16 @@ app.get(
         orderBy: {
           id: "asc",
         },
+        select: {
+          id: true,
+          message: true,
+          roomId: true,
+          userId: true,
+        },
       });
 
       return res.status(200).json({
+        roomId,
         messages,
       });
     } catch (error) {
@@ -393,6 +441,7 @@ app.get(
 
 app.get(
   "/drawing/:roomId",
+  middleware,
   async (req: Request, res: Response) => {
     try {
       const receivedRoomId = req.params.roomId;
@@ -406,9 +455,22 @@ app.get(
         });
       }
 
-      const roomId = decodeURIComponent(
-        receivedRoomId,
-      ).trim();
+      const roomId = getRoomSlug(receivedRoomId);
+
+      const room = await prisma.room.findUnique({
+        where: {
+          slug: roomId,
+        },
+        select: {
+          slug: true,
+        },
+      });
+
+      if (!room) {
+        return res.status(404).json({
+          message: "Room does not exist",
+        });
+      }
 
       const drawing = await prisma.drawing.findUnique({
         where: {
@@ -417,6 +479,7 @@ app.get(
       });
 
       return res.status(200).json({
+        roomId,
         drawing,
       });
     } catch (error) {
@@ -448,24 +511,30 @@ app.put(
         });
       }
 
-      if (
-        !drawingData ||
-        typeof drawingData !== "object" ||
-        Array.isArray(drawingData)
-      ) {
+      if (!isValidObject(drawingData)) {
         return res.status(400).json({
           message: "Invalid drawing data",
         });
       }
 
-      const roomId = decodeURIComponent(
-        receivedRoomId,
-      ).trim();
+      if (
+        "elements" in drawingData &&
+        !Array.isArray(drawingData.elements)
+      ) {
+        return res.status(400).json({
+          message: "Drawing elements must be an array",
+        });
+      }
 
-      // Confirm that the room exists before saving the drawing
+      const roomId = getRoomSlug(receivedRoomId);
+
       const existingRoom = await prisma.room.findUnique({
         where: {
           slug: roomId,
+        },
+        select: {
+          slug: true,
+          adminId: true,
         },
       });
 
@@ -502,6 +571,69 @@ app.put(
   },
 );
 
+/* ----------------------------- DELETE ROOM DRAWING ----------------------------- */
+
+app.delete(
+  "/drawing/:roomId",
+  middleware,
+  async (req: Request, res: Response) => {
+    try {
+      const receivedRoomId = req.params.roomId;
+
+      if (
+        typeof receivedRoomId !== "string" ||
+        receivedRoomId.trim().length === 0
+      ) {
+        return res.status(400).json({
+          message: "Valid roomId is required",
+        });
+      }
+
+      const roomId = getRoomSlug(receivedRoomId);
+
+      const room = await prisma.room.findUnique({
+        where: {
+          slug: roomId,
+        },
+      });
+
+      if (!room) {
+        return res.status(404).json({
+          message: "Room does not exist",
+        });
+      }
+
+      const existingDrawing = await prisma.drawing.findUnique({
+        where: {
+          roomId,
+        },
+      });
+
+      if (!existingDrawing) {
+        return res.status(404).json({
+          message: "Drawing does not exist",
+        });
+      }
+
+      await prisma.drawing.delete({
+        where: {
+          roomId,
+        },
+      });
+
+      return res.status(200).json({
+        message: "Drawing deleted successfully",
+      });
+    } catch (error) {
+      console.error("DELETE DRAWING ERROR:", error);
+
+      return res.status(500).json({
+        message: "Failed to delete drawing",
+      });
+    }
+  },
+);
+
 /* ----------------------------- HEALTH CHECK ----------------------------- */
 
 app.get("/", (_req: Request, res: Response) => {
@@ -511,8 +643,6 @@ app.get("/", (_req: Request, res: Response) => {
 });
 
 /* ----------------------------- SERVER ----------------------------- */
-
-const PORT = 4000;
 
 app.listen(PORT, () => {
   console.log(`HTTP server running on port ${PORT}`);
