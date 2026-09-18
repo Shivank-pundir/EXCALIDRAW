@@ -159,6 +159,7 @@ const skipDrawingBroadcastRef = useRef(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [isChatConnected, setIsChatConnected] = useState(false);
+  const [roomUsers, setRoomUsers] = useState<{ userId: string }[]>([]);
 
   /* ----------------------------- CANVAS POINT ----------------------------- */
 
@@ -1002,6 +1003,13 @@ const skipDrawingBroadcastRef = useRef(false);
         if (data.type === "room_chats") {
           setChatMessages(data.messages ?? []);
         }
+        if (
+  data.type === "room_users" &&
+  data.roomId === slug &&
+  Array.isArray(data.users)
+) {
+  setRoomUsers(data.users);
+}
 
         if (data.type === "chat") {
           setChatMessages((previousMessages) => [
@@ -1386,6 +1394,9 @@ useEffect(() => {
                 : "text-red-300"
             }
           >
+              <span>
+    👥 {roomUsers.length} online
+  </span>
             {isChatConnected
               ? "● Connected"
               : "● Disconnected"}

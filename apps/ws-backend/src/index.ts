@@ -1,49 +1,22 @@
 import { WebSocket, WebSocketServer } from "ws";
-import jwt from "jsonwebtoken";
 
-import { jwt_secret } from "@repo/backend-common/config";
-import { prisma } from "@repo/db-stable";
+import { handleJoinRoom, handleLeaveRoom } from "./handlers/room";
+import { handleGetChats, handleChat } from "./handlers/chat";
+import { handleDrawing } from "./handlers/drawing";
 
-type ConnectedUser = {
-  ws: WebSocket;
-  userId: string;
-  rooms: Set<string>;
-};
+import {
+  getUserFromSocket,
+  getUserIdFromToken,
+  sendError,
+  broadcastToRoom,
+  broadcastRoomUsers,
+  sendMessage,
+} from "./utils/webSocket";
 
-type JoinRoomMessage = {
-  type: "join_room";
-  roomId: string;
-};
-
-type LeaveRoomMessage = {
-  type: "leave_room";
-  roomId: string;
-};
-
-type ChatMessage = {
-  type: "chat";
-  roomId: string;
-  message: string;
-};
-
-type GetChatsMessage = {
-  type: "get_chats";
-  roomId: string;
-};
-
-// NEW: Drawing message
-type DrawingMessage = {
-  type: "drawing";
-  roomId: string;
-  elements: unknown[];
-};
-
-type IncomingMessage =
-  | JoinRoomMessage
-  | LeaveRoomMessage
-  | ChatMessage
-  | GetChatsMessage
-  | DrawingMessage;
+import {
+  ConnectedUser,
+  IncomingMessage,
+} from "./types/message";
 
 const PORT = 8080;
 
@@ -54,83 +27,6 @@ const wss = new WebSocketServer({
 });
 
 console.log(`WebSocket server running on port ${PORT}`);
-
-/* =========================================================
-   HELPER FUNCTIONS
-========================================================= */
-
-function sendMessage(ws: WebSocket, data: object): void {
-  if (ws.readyState !== WebSocket.OPEN) {
-    return;
-  }
-
-  ws.send(JSON.stringify(data));
-}
-
-function sendError(
-  ws: WebSocket,
-  message: string,
-  roomId?: string,
-): void {
-  sendMessage(ws, {
-    type: "error",
-    message,
-    ...(roomId ? { roomId } : {}),
-  });
-}
-
-function broadcastToRoom(
-  roomId: string,
-  data: object,
-  excludedWs?: WebSocket,
-): void {
-  for (const user of connectedUsers.values()) {
-    const isMember = user.rooms.has(roomId);
-    const isExcluded = user.ws === excludedWs;
-
-    if (isMember && !isExcluded) {
-      sendMessage(user.ws, data);
-    }
-  }
-}
-
-function removeUserFromRoom(
-  user: ConnectedUser,
-  roomId: string,
-): boolean {
-  return user.rooms.delete(roomId);
-}
-
-function getUserFromSocket(
-  ws: WebSocket,
-): ConnectedUser | undefined {
-  return connectedUsers.get(ws);
-}
-
-function getUserIdFromToken(token: string): string {
-  const decodedToken = jwt.verify(token, jwt_secret);
-
-  if (typeof decodedToken === "string" || !decodedToken) {
-    throw new Error("Invalid token");
-  }
-
-  const userId = String(
-    decodedToken.userId ??
-      decodedToken.id ??
-      decodedToken._id ??
-      "",
-  );
-
-  if (!userId) {
-    throw new Error("User ID is missing in token");
-  }
-
-  return userId;
-}
-
-/* =========================================================
-   MESSAGE VALIDATION
-========================================================= */
 
 function isIncomingMessage(
   value: unknown,
@@ -160,7 +56,6 @@ function isIncomingMessage(
     );
   }
 
-  // NEW: Validate drawing message
   if (data.type === "drawing") {
     return (
       typeof data.roomId === "string" &&
@@ -171,281 +66,10 @@ function isIncomingMessage(
   return false;
 }
 
-/* =========================================================
-   JOIN ROOM
-========================================================= */
-
-async function handleJoinRoom(
-  ws: WebSocket,
-  user: ConnectedUser,
-  roomId: string,
-): Promise<void> {
-  const cleanRoomId = roomId.trim();
-
-  if (!cleanRoomId) {
-    sendError(ws, "Room ID is required");
-    return;
-  }
-
-  const room = await prisma.room.findUnique({
-    where: {
-      slug: cleanRoomId,
-    },
-  });
-
-  if (!room) {
-    sendError(ws, "Room not found", cleanRoomId);
-    return;
-  }
-
-  if (user.rooms.has(cleanRoomId)) {
-    sendMessage(ws, {
-      type: "already_joined",
-      roomId: cleanRoomId,
-      message: "You have already joined this room",
-    });
-
-    return;
-  }
-
-  user.rooms.add(cleanRoomId);
-
-  sendMessage(ws, {
-    type: "joined_room",
-    roomId: cleanRoomId,
-    message: `Joined room ${cleanRoomId}`,
-  });
-
-  broadcastToRoom(
-    cleanRoomId,
-    {
-      type: "user_joined",
-      roomId: cleanRoomId,
-      userId: user.userId,
-    },
-    ws,
-  );
-
-  console.log(
-    `User ${user.userId} joined room ${cleanRoomId}`,
-  );
-}
-
-/* =========================================================
-   LEAVE ROOM
-========================================================= */
-
-async function handleLeaveRoom(
-  ws: WebSocket,
-  user: ConnectedUser,
-  roomId: string,
-): Promise<void> {
-  const cleanRoomId = roomId.trim();
-
-  if (!cleanRoomId) {
-    sendError(ws, "Room ID is required");
-    return;
-  }
-
-  const wasMember = removeUserFromRoom(user, cleanRoomId);
-
-  if (!wasMember) {
-    sendError(
-      ws,
-      "You have not joined this room",
-      cleanRoomId,
-    );
-
-    return;
-  }
-
-  sendMessage(ws, {
-    type: "left_room",
-    roomId: cleanRoomId,
-    message: `You left room ${cleanRoomId}`,
-  });
-
-  broadcastToRoom(cleanRoomId, {
-    type: "user_left",
-    roomId: cleanRoomId,
-    userId: user.userId,
-  });
-
-  console.log(
-    `User ${user.userId} left room ${cleanRoomId}`,
-  );
-}
-
-/* =========================================================
-   GET CHATS
-========================================================= */
-
-async function handleGetChats(
-  ws: WebSocket,
-  user: ConnectedUser,
-  roomId: string,
-): Promise<void> {
-  const cleanRoomId = roomId.trim();
-
-  if (!cleanRoomId) {
-    sendError(ws, "Room ID is required");
-    return;
-  }
-
-  if (!user.rooms.has(cleanRoomId)) {
-    sendError(
-      ws,
-      "You have not joined this room",
-      cleanRoomId,
-    );
-
-    return;
-  }
-
-  const room = await prisma.room.findUnique({
-    where: {
-      slug: cleanRoomId,
-    },
-  });
-
-  if (!room) {
-    sendError(ws, "Room not found", cleanRoomId);
-    return;
-  }
-
-  const messages = await prisma.chat.findMany({
-    where: {
-      roomId: cleanRoomId,
-    },
-    orderBy: {
-      id: "asc",
-    },
-  });
-
-  sendMessage(ws, {
-    type: "room_chats",
-    roomId: cleanRoomId,
-    messages,
-  });
-}
-
-/* =========================================================
-   CHAT
-========================================================= */
-
-async function handleChat(
-  ws: WebSocket,
-  user: ConnectedUser,
-  roomId: string,
-  message: string,
-): Promise<void> {
-  const cleanRoomId = roomId.trim();
-  const cleanMessage = message.trim();
-
-  if (!cleanRoomId || !cleanMessage) {
-    sendError(ws, "Room ID and message are required");
-    return;
-  }
-
-  if (!user.rooms.has(cleanRoomId)) {
-    sendError(
-      ws,
-      "You have not joined this room",
-      cleanRoomId,
-    );
-
-    return;
-  }
-
-  const room = await prisma.room.findUnique({
-    where: {
-      slug: cleanRoomId,
-    },
-  });
-
-  if (!room) {
-    sendError(ws, "Room not found", cleanRoomId);
-    return;
-  }
-
-  const savedChat = await prisma.chat.create({
-    data: {
-      roomId: cleanRoomId,
-      message: cleanMessage,
-      userId: user.userId,
-    },
-  });
-
-  broadcastToRoom(cleanRoomId, {
-    type: "chat",
-    roomId: cleanRoomId,
-    message: savedChat.message,
-    userId: savedChat.userId,
-    chatId: savedChat.id,
-  });
-
-  console.log(
-    `Message sent by ${user.userId} in room ${cleanRoomId}`,
-  );
-}
-
-/* =========================================================
-   DRAWING BROADCAST
-========================================================= */
-
-// NEW: Handle drawing updates
-function handleDrawing(
-  ws: WebSocket,
-  user: ConnectedUser,
-  roomId: string,
-  elements: unknown[],
-): void {
-  const cleanRoomId = roomId.trim();
-
-  if (!cleanRoomId) {
-    sendError(ws, "Room ID is required");
-    return;
-  }
-
-  // Make sure the user is actually inside this room
-  if (!user.rooms.has(cleanRoomId)) {
-    sendError(
-      ws,
-      "You have not joined this room",
-      cleanRoomId,
-    );
-
-    return;
-  }
-
-  // Send drawing to every other user in this room
-  broadcastToRoom(
-    cleanRoomId,
-    {
-      type: "drawing",
-      roomId: cleanRoomId,
-      elements,
-      userId: user.userId,
-    },
-    ws,
-  );
-
-  console.log(
-    `Drawing update from ${user.userId} in room ${cleanRoomId}`,
-  );
-}
-
-/* =========================================================
-   WEBSOCKET CONNECTION
-========================================================= */
-
 wss.on("connection", (ws, request) => {
   let userId: string;
 
-  /* ---------------------------------------------------------
-     AUTHENTICATION
-  --------------------------------------------------------- */
-
+  // Authentication
   try {
     const url = new URL(
       request.url ?? "",
@@ -472,10 +96,7 @@ wss.on("connection", (ws, request) => {
     return;
   }
 
-  /* ---------------------------------------------------------
-     CREATE CONNECTED USER
-  --------------------------------------------------------- */
-
+  // Create connected user
   const user: ConnectedUser = {
     ws,
     userId,
@@ -492,10 +113,7 @@ wss.on("connection", (ws, request) => {
     userId,
   });
 
-  /* ---------------------------------------------------------
-     RECEIVE MESSAGE
-  --------------------------------------------------------- */
-
+  // Receive messages
   ws.on("message", async (rawMessage) => {
     try {
       const parsedData: unknown = JSON.parse(
@@ -507,7 +125,10 @@ wss.on("connection", (ws, request) => {
         return;
       }
 
-      const currentUser = getUserFromSocket(ws);
+      const currentUser = getUserFromSocket(
+        ws,
+        connectedUsers,
+      );
 
       if (!currentUser) {
         sendError(ws, "User connection not found");
@@ -515,37 +136,25 @@ wss.on("connection", (ws, request) => {
       }
 
       switch (parsedData.type) {
-        /* ---------------------------------------------------
-           JOIN ROOM
-        --------------------------------------------------- */
-
         case "join_room": {
           await handleJoinRoom(
             ws,
             currentUser,
             parsedData.roomId,
+            connectedUsers,
           );
-
           break;
         }
-
-        /* ---------------------------------------------------
-           LEAVE ROOM
-        --------------------------------------------------- */
 
         case "leave_room": {
           await handleLeaveRoom(
             ws,
             currentUser,
             parsedData.roomId,
+            connectedUsers,
           );
-
           break;
         }
-
-        /* ---------------------------------------------------
-           GET CHATS
-        --------------------------------------------------- */
 
         case "get_chats": {
           await handleGetChats(
@@ -553,13 +162,8 @@ wss.on("connection", (ws, request) => {
             currentUser,
             parsedData.roomId,
           );
-
           break;
         }
-
-        /* ---------------------------------------------------
-           CHAT
-        --------------------------------------------------- */
 
         case "chat": {
           await handleChat(
@@ -567,14 +171,10 @@ wss.on("connection", (ws, request) => {
             currentUser,
             parsedData.roomId,
             parsedData.message,
+            connectedUsers,
           );
-
           break;
         }
-
-        /* ---------------------------------------------------
-           DRAWING
-        --------------------------------------------------- */
 
         case "drawing": {
           handleDrawing(
@@ -582,8 +182,8 @@ wss.on("connection", (ws, request) => {
             currentUser,
             parsedData.roomId,
             parsedData.elements,
+            connectedUsers,
           );
-
           break;
         }
 
@@ -601,10 +201,7 @@ wss.on("connection", (ws, request) => {
     }
   });
 
-  /* ---------------------------------------------------------
-     CONNECTION CLOSED
-  --------------------------------------------------------- */
-
+  // Connection closed
   ws.on("close", () => {
     const currentUser = connectedUsers.get(ws);
 
@@ -612,17 +209,24 @@ wss.on("connection", (ws, request) => {
       return;
     }
 
-    for (const roomId of currentUser.rooms) {
-      broadcastToRoom(
-        roomId,
-        {
-          type: "user_left",
-          roomId,
-          userId: currentUser.userId,
-        },
-        ws,
-      );
-    }
+    const rooms = [...currentUser.rooms];
+
+for (const roomId of rooms) {
+  currentUser.rooms.delete(roomId);
+
+  broadcastToRoom(
+    roomId,
+    {
+      type: "user_left",
+      roomId,
+      userId: currentUser.userId,
+    },
+    connectedUsers,
+    ws,
+  );
+
+  broadcastRoomUsers(roomId, connectedUsers);
+}
 
     connectedUsers.delete(ws);
 
@@ -631,10 +235,7 @@ wss.on("connection", (ws, request) => {
     );
   });
 
-  /* ---------------------------------------------------------
-     WEBSOCKET ERROR
-  --------------------------------------------------------- */
-
+  // WebSocket error
   ws.on("error", (error) => {
     console.error(
       `WebSocket error for user ${userId}:`,
