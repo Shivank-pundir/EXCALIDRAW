@@ -68,7 +68,7 @@ export async function handleJoinRoom(
     connectedUsers,
     ws,
   );
-  broadcastRoomUsers(cleanRoomId, connectedUsers);
+ await broadcastRoomUsers(cleanRoomId, connectedUsers);
 
   console.log(
     `User ${user.userId} joined room ${cleanRoomId}`,

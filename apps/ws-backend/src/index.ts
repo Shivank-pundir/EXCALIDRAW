@@ -202,7 +202,7 @@ wss.on("connection", (ws, request) => {
   });
 
   // Connection closed
-  ws.on("close", () => {
+  ws.on("close", async () => {
     const currentUser = connectedUsers.get(ws);
 
     if (!currentUser) {
@@ -211,22 +211,25 @@ wss.on("connection", (ws, request) => {
 
     const rooms = [...currentUser.rooms];
 
-for (const roomId of rooms) {
-  currentUser.rooms.delete(roomId);
+    for (const roomId of rooms) {
+      currentUser.rooms.delete(roomId);
 
-  broadcastToRoom(
-    roomId,
-    {
-      type: "user_left",
-      roomId,
-      userId: currentUser.userId,
-    },
-    connectedUsers,
-    ws,
-  );
+      broadcastToRoom(
+        roomId,
+        {
+          type: "user_left",
+          roomId,
+          userId: currentUser.userId,
+        },
+        connectedUsers,
+        ws,
+      );
 
-  broadcastRoomUsers(roomId, connectedUsers);
-}
+      await broadcastRoomUsers(
+        roomId,
+        connectedUsers,
+      );
+    }
 
     connectedUsers.delete(ws);
 

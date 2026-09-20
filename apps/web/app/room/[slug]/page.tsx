@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import { useParams } from "next/navigation";
-
+import { toast } from "react-hot-toast";
 import RoomHeader from "./components/RoomHader";
 import Toolbar from "./components/Toolbar";
 import Canvas, {
@@ -114,8 +114,13 @@ export default function RoomPage() {
   const [isConnected, setIsConnected] =
     useState(false);
 
-  const [roomUsers, setRoomUsers] =
-    useState<{ userId: string }[]>([]);
+ const [roomUsers, setRoomUsers] =
+  useState<
+    {
+      userId: string;
+      name: string;
+    }[]
+  >([]);
 
   // =========================================================
   // CHAT STATE
@@ -1323,47 +1328,45 @@ export default function RoomPage() {
           data,
         );
 
-        // ---------------------------------------------------
-        // JOINED ROOM
-        // ---------------------------------------------------
+        
 
-        if (
-          data.type ===
-          "joined_room"
-        ) {
-          hasJoinedRoomRef.current =
-            true;
+   // ---------------------------------------------------
+// JOINED ROOM
+// ---------------------------------------------------
 
-          socket.send(
-            JSON.stringify({
-              type: "get_chats",
-              roomId: slug,
-            }),
-          );
+if (data.type === "joined_room") {
+  if (data.roomId !== slug) {
+    return;
+  }
 
-          return;
-        }
+  hasJoinedRoomRef.current = true;
 
-        // ---------------------------------------------------
-        // ALREADY JOINED
-        // ---------------------------------------------------
+  socket.send(
+    JSON.stringify({
+      type: "get_chats",
+      roomId: slug,
+    }),
+  );
 
-        if (
-          data.type ===
-          "already_joined"
-        ) {
-          hasJoinedRoomRef.current =
-            true;
+  return;
+}
 
-          socket.send(
-            JSON.stringify({
-              type: "get_chats",
-              roomId: slug,
-            }),
-          );
+// ---------------------------------------------------
+// ALREADY JOINED
+// ---------------------------------------------------
 
-          return;
-        }
+if (data.type === "already_joined") {
+  hasJoinedRoomRef.current = true;
+
+  socket.send(
+    JSON.stringify({
+      type: "get_chats",
+      roomId: slug,
+    }),
+  );
+
+  return;
+}
 
         // ---------------------------------------------------
         // ROOM USERS
@@ -1392,34 +1395,33 @@ export default function RoomPage() {
         // USER JOINED
         // ---------------------------------------------------
 
-        if (
-          data.type ===
-          "user_joined"
-        ) {
-          console.log(
-            "User joined:",
-            data.userId,
-          );
+       // ---------------------------------------------------
+// USER JOINED
+// ---------------------------------------------------
 
-          return;
-        }
+if (data.type === "user_joined") {
+  if (data.roomId !== slug) {
+    return;
+  }
 
-        // ---------------------------------------------------
-        // USER LEFT
-        // ---------------------------------------------------
+  toast.success("A user joined the room");
 
-        if (
-          data.type ===
-          "user_left"
-        ) {
-          console.log(
-            "User left:",
-            data.userId,
-          );
+  return;
+}
 
-          return;
-        }
+// ---------------------------------------------------
+// USER LEFT
+// ---------------------------------------------------
 
+if (data.type === "user_left") {
+  if (data.roomId !== slug) {
+    return;
+  }
+
+  toast.success("A user left the room");
+
+  return;
+}
         // ---------------------------------------------------
         // DRAWING
         // ---------------------------------------------------
@@ -1815,15 +1817,14 @@ export default function RoomPage() {
     <div className="flex h-screen flex-col bg-gray-100">
       {/* HEADER */}
 
-      <RoomHeader
-        slug={slug}
-        isConnected={isConnected}
-        roomUsersCount={
-          roomUsers.length
-        }
-        isSaving={isSaving}
-        onSave={saveDrawing}
-      />
+     <RoomHeader
+  slug={slug}
+  isConnected={isConnected}
+  roomUsersCount={roomUsers.length}
+  roomUsers={roomUsers}
+  isSaving={isSaving}
+  onSave={saveDrawing}
+/>
 
       {/* MAIN */}
 

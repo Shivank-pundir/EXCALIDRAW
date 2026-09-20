@@ -1,5 +1,6 @@
 import { WebSocket } from "ws";
 import jwt from "jsonwebtoken";
+import { prisma } from "@repo/db-stable";
 
 import { jwt_secret } from "@repo/backend-common/config";
 import { ConnectedUser } from "../types/message";
@@ -90,19 +91,35 @@ export function getRoomUsers(
   return users;
 }
 
-export function broadcastRoomUsers(
+export async function broadcastRoomUsers(
   roomId: string,
   connectedUsers: Map<WebSocket, ConnectedUser>,
-): void {
-  const users = getRoomUsers(roomId, connectedUsers);
+): Promise<void> {
+  const users = getRoomUsers(
+    roomId,
+    connectedUsers,
+  );
+
+  const userDetails = await prisma.user.findMany({
+    where: {
+      id: {
+        in: users,
+      },
+    },
+    select: {
+      id: true,
+      name: true,
+    },
+  });
 
   broadcastToRoom(
     roomId,
     {
       type: "room_users",
       roomId,
-      users: users.map((userId) => ({
-        userId,
+      users: userDetails.map((user) => ({
+        userId: user.id,
+        name: user.name,
       })),
     },
     connectedUsers,
