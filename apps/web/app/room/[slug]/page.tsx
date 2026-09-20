@@ -1,896 +1,1131 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useParams } from "next/navigation";
 
-/* ----------------------------- CONFIG ----------------------------- */
+import RoomHeader from "./components/RoomHader";
+import Toolbar from "./components/Toolbar";
+import Canvas, {
+  type DrawingElement,
+  type Point,
+  type Tool,
+} from "./components/Canvas";
+import Chat, {
+  type ChatMessage,
+} from "./components/Chat";
+import ZoomControls from "./components/ZoomControl";
 
 const HTTP_BACKEND_URL = "http://localhost:4000";
 const WS_BACKEND_URL = "ws://localhost:8080";
 
-const CANVAS_WIDTH = 1200;
-const CANVAS_HEIGHT = 700;
-
-/* ----------------------------- TYPES ----------------------------- */
-
-type Point = {
-  x: number;
-  y: number;
-};
-
-type Tool =
-  | "select"
-  | "pen"
-  | "rectangle"
-  | "circle"
-  | "line"
-  | "arrow"
-  | "text"
-  | "eraser";
-
-type BaseElement = {
-  id: string;
-  strokeColor: string;
-  fillColor: string;
-  strokeWidth: number;
-};
-
-type PenElement = BaseElement & {
-  type: "pen";
-  points: Point[];
-};
-
-type RectangleElement = BaseElement & {
-  type: "rectangle";
-  startX: number;
-  startY: number;
-  width: number;
-  height: number;
-};
-
-type CircleElement = BaseElement & {
-  type: "circle";
-  centerX: number;
-  centerY: number;
-  radiusX: number;
-  radiusY: number;
-};
-
-type LineElement = BaseElement & {
-  type: "line";
-  startX: number;
-  startY: number;
-  endX: number;
-  endY: number;
-};
-
-type ArrowElement = BaseElement & {
-  type: "arrow";
-  startX: number;
-  startY: number;
-  endX: number;
-  endY: number;
-};
-
-type TextElement = BaseElement & {
-  type: "text";
-  x: number;
-  y: number;
-  text: string;
-  fontSize: number;
-};
-
-type DrawingElement =
-  | PenElement
-  | RectangleElement
-  | CircleElement
-  | LineElement
-  | ArrowElement
-  | TextElement;
-
-type ChatMessage = {
-  id?: number;
-  chatId?: number;
-  message: string;
-  userId: string;
-};
-
-/* ----------------------------- HELPERS ----------------------------- */
-
-function createId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function cloneElements(elements: DrawingElement[]): DrawingElement[] {
-  return structuredClone(elements);
-}
-
-function distanceBetweenPoints(first: Point, second: Point): number {
-  return Math.sqrt(
-    Math.pow(first.x - second.x, 2) +
-      Math.pow(first.y - second.y, 2),
-  );
-}
-
-/* ----------------------------- COMPONENT ----------------------------- */
-
 export default function RoomPage() {
   const params = useParams();
+
   const slug = params.slug as string;
 
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const textInputRef = useRef<HTMLInputElement | null>(null);
-  const chatInputRef = useRef<HTMLInputElement | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
-const chatBottomRef = useRef<HTMLDivElement | null>(null);
-const hasJoinedRoomRef = useRef(false);
+  // =========================================================
+  // REFS
+  // =========================================================
 
-// Prevent drawing received from another user from being sent back
-const skipDrawingBroadcastRef = useRef(false);
+  const canvasRef =
+    useRef<HTMLCanvasElement | null>(null);
 
-  
+  const wsRef =
+    useRef<WebSocket | null>(null);
 
-  const [selectedTool, setSelectedTool] =
-    useState<Tool>("select");
+  const hasJoinedRoomRef =
+    useRef(false);
 
-  const [elements, setElements] = useState<DrawingElement[]>([]);
-  const [history, setHistory] = useState<DrawingElement[][]>([]);
-  const [redoStack, setRedoStack] = useState<DrawingElement[][]>([]);
+  const skipDrawingBroadcastRef =
+    useRef(false);
 
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [startPoint, setStartPoint] = useState<Point | null>(null);
+  // =========================================================
+  // DRAWING STATE
+  // =========================================================
+
+  const [elements, setElements] =
+    useState<DrawingElement[]>([]);
+
+  const [history, setHistory] =
+    useState<DrawingElement[][]>([]);
+
+  const [redoStack, setRedoStack] =
+    useState<DrawingElement[][]>([]);
+
   const [selectedElementId, setSelectedElementId] =
     useState<string | null>(null);
 
-  const [dragOffset, setDragOffset] = useState<Point | null>(null);
-  const [isMovingElement, setIsMovingElement] = useState(false);
+  const [selectedTool, setSelectedTool] =
+    useState<Tool>("pen");
 
-  const [strokeColor, setStrokeColor] = useState("#111827");
-  const [fillColor, setFillColor] = useState("transparent");
-  const [strokeWidth, setStrokeWidth] = useState(3);
-  const [fontSize, setFontSize] = useState(24);
+  const [strokeColor, setStrokeColor] =
+    useState("#111827");
 
-  const [zoom, setZoom] = useState(1);
+  const [fillColor, setFillColor] =
+    useState("transparent");
 
-  const [isSaving, setIsSaving] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [saveMessage, setSaveMessage] = useState("");
+  const [strokeWidth, setStrokeWidth] =
+    useState(3);
 
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatInput, setChatInput] = useState("");
-  const [isChatConnected, setIsChatConnected] = useState(false);
-  const [roomUsers, setRoomUsers] = useState<{ userId: string }[]>([]);
+  const [fontSize, setFontSize] =
+    useState(24);
 
-  /* ----------------------------- CANVAS POINT ----------------------------- */
+  const [zoom, setZoom] =
+    useState(1);
 
-  const getPoint = useCallback(
-    (event: React.PointerEvent<HTMLCanvasElement>): Point => {
-      const canvas = canvasRef.current;
+  // =========================================================
+  // DRAWING REFS
+  // =========================================================
 
-      if (!canvas) {
-        return { x: 0, y: 0 };
-      }
+  const isDrawingRef =
+    useRef(false);
 
-      const rect = canvas.getBoundingClientRect();
+  const currentElementIdRef =
+    useRef<string | null>(null);
 
+  const startPointRef =
+    useRef<Point | null>(null);
+
+  const movingElementRef =
+    useRef<DrawingElement | null>(null);
+
+  const moveOffsetRef =
+    useRef<Point | null>(null);
+
+  // =========================================================
+  // SAVE / LOAD STATE
+  // =========================================================
+
+  const [isSaving, setIsSaving] =
+    useState(false);
+
+  const [isLoading, setIsLoading] =
+    useState(true);
+
+  // =========================================================
+  // WEBSOCKET STATE
+  // =========================================================
+
+  const [isConnected, setIsConnected] =
+    useState(false);
+
+  const [roomUsers, setRoomUsers] =
+    useState<{ userId: string }[]>([]);
+
+  // =========================================================
+  // CHAT STATE
+  // =========================================================
+
+  const [chatMessages, setChatMessages] =
+    useState<ChatMessage[]>([]);
+
+  const [chatInput, setChatInput] =
+    useState("");
+
+  const [isChatConnected, setIsChatConnected] =
+    useState(false);
+
+  // =========================================================
+  // GET CANVAS POINT
+  // =========================================================
+
+  const getPoint = (
+    event: React.PointerEvent<HTMLCanvasElement>,
+  ): Point => {
+    const canvas = canvasRef.current;
+
+    if (!canvas) {
       return {
-        x:
-          ((event.clientX - rect.left) / rect.width) *
-          CANVAS_WIDTH /
-          zoom,
-        y:
-          ((event.clientY - rect.top) / rect.height) *
-          CANVAS_HEIGHT /
-          zoom,
+        x: 0,
+        y: 0,
       };
-    },
-    [zoom],
-  );
+    }
 
-  /* ----------------------------- HISTORY ----------------------------- */
+    const rect =
+      canvas.getBoundingClientRect();
 
-  const saveHistory = useCallback(() => {
-    setHistory((previousHistory) => [
-      ...previousHistory,
-      cloneElements(elements),
+    return {
+      x:
+        (event.clientX - rect.left) /
+        zoom,
+      y:
+        (event.clientY - rect.top) /
+        zoom,
+    };
+  };
+
+  // =========================================================
+  // HISTORY
+  // =========================================================
+
+  const saveHistory = () => {
+    setHistory((prev) => [
+      ...prev,
+      elements,
     ]);
 
     setRedoStack([]);
-  }, [elements]);
+  };
 
-  const handleUndo = useCallback(() => {
-    if (history.length === 0) return;
-
-    const previousElements = history[history.length - 1];
-
-    setRedoStack((previousRedoStack) => [
-      ...previousRedoStack,
-      cloneElements(elements),
-    ]);
-
-    setElements(cloneElements(previousElements));
-
-    setHistory((previousHistory) =>
-      previousHistory.slice(0, -1),
-    );
-
-    setSelectedElementId(null);
-  }, [elements, history]);
-
-  const handleRedo = useCallback(() => {
-    if (redoStack.length === 0) return;
-
-    const nextElements = redoStack[redoStack.length - 1];
-
-    setHistory((previousHistory) => [
-      ...previousHistory,
-      cloneElements(elements),
-    ]);
-
-    setElements(cloneElements(nextElements));
-
-    setRedoStack((previousRedoStack) =>
-      previousRedoStack.slice(0, -1),
-    );
-
-    setSelectedElementId(null);
-  }, [elements, redoStack]);
-
-  /* ----------------------------- HIT TESTING ----------------------------- */
-
-  const isPointInsideElement = useCallback(
-    (point: Point, element: DrawingElement): boolean => {
-      if (element.type === "rectangle") {
-        const left = Math.min(
-          element.startX,
-          element.startX + element.width,
-        );
-
-        const right = Math.max(
-          element.startX,
-          element.startX + element.width,
-        );
-
-        const top = Math.min(
-          element.startY,
-          element.startY + element.height,
-        );
-
-        const bottom = Math.max(
-          element.startY,
-          element.startY + element.height,
-        );
-
-        return (
-          point.x >= left - 12 &&
-          point.x <= right + 12 &&
-          point.y >= top - 12 &&
-          point.y <= bottom + 12
-        );
-      }
-
-      if (element.type === "circle") {
-        const distanceX = point.x - element.centerX;
-        const distanceY = point.y - element.centerY;
-
-        const normalizedX =
-          element.radiusX === 0
-            ? 999
-            : distanceX / element.radiusX;
-
-        const normalizedY =
-          element.radiusY === 0
-            ? 999
-            : distanceY / element.radiusY;
-
-        return (
-          normalizedX * normalizedX +
-            normalizedY * normalizedY <=
-          1.3
-        );
-      }
-
-      if (
-        element.type === "line" ||
-        element.type === "arrow"
-      ) {
-        const start = {
-          x: element.startX,
-          y: element.startY,
-        };
-
-        const end = {
-          x: element.endX,
-          y: element.endY,
-        };
-
-        const lineLength = distanceBetweenPoints(start, end);
-
-        if (lineLength === 0) return false;
-
-        const distanceToStart = distanceBetweenPoints(
-          point,
-          start,
-        );
-
-        const distanceToEnd = distanceBetweenPoints(
-          point,
-          end,
-        );
-
-        return (
-          distanceToStart + distanceToEnd <=
-          lineLength + 20
-        );
-      }
-
-      if (element.type === "text") {
-        return (
-          point.x >= element.x - 10 &&
-          point.x <=
-            element.x + element.text.length * element.fontSize * 0.6 &&
-          point.y >= element.y - element.fontSize &&
-          point.y <= element.y + 10
-        );
-      }
-
-      if (element.type === "pen") {
-        return element.points.some(
-          (linePoint) =>
-            distanceBetweenPoints(point, linePoint) <= 14,
-        );
-      }
-
-      return false;
-    },
-    [],
-  );
-
-  const getElementAtPoint = useCallback(
-    (point: Point): DrawingElement | null => {
-      for (let index = elements.length - 1; index >= 0; index--) {
-        const element = elements[index];
-
-        if (element && isPointInsideElement(point, element)) {
-          return element;
-        }
-      }
-
-      return null;
-    },
-    [elements, isPointInsideElement],
-  );
-
-  /* ----------------------------- SELECT/MOVE ----------------------------- */
-
-  const startSelecting = (
-    event: React.PointerEvent<HTMLCanvasElement>,
-  ) => {
-    const point = getPoint(event);
-    const clickedElement = getElementAtPoint(point);
-
-    if (!clickedElement) {
-      setSelectedElementId(null);
+  const handleUndo = () => {
+    if (history.length === 0) {
       return;
     }
 
-    saveHistory();
+    const previousState =
+      history[history.length - 1];
 
-    setSelectedElementId(clickedElement.id);
-    setIsMovingElement(true);
-    setIsDrawing(true);
+    setHistory((prev) =>
+      prev.slice(0, -1),
+    );
 
-    if (
-      clickedElement.type === "rectangle" ||
-      clickedElement.type === "circle"
-    ) {
-      setDragOffset({
-        x:
-          point.x -
-          (clickedElement.type === "rectangle"
-            ? clickedElement.startX
-            : clickedElement.centerX),
-        y:
-          point.y -
-          (clickedElement.type === "rectangle"
-            ? clickedElement.startY
-            : clickedElement.centerY),
-      });
+    setRedoStack((prev) => [
+      ...prev,
+      elements,
+    ]);
+
+    setElements(previousState);
+
+    setSelectedElementId(null);
+  };
+
+  const handleRedo = () => {
+    if (redoStack.length === 0) {
+      return;
+    }
+
+    const nextState =
+      redoStack[redoStack.length - 1];
+
+    setRedoStack((prev) =>
+      prev.slice(0, -1),
+    );
+
+    setHistory((prev) => [
+      ...prev,
+      elements,
+    ]);
+
+    setElements(nextState);
+
+    setSelectedElementId(null);
+  };
+
+  // =========================================================
+  // HIT TESTING
+  // =========================================================
+
+  const isPointInsideElement = (
+    point: Point,
+    element: DrawingElement,
+  ): boolean => {
+    if (element.type === "rectangle") {
+      const minX = Math.min(
+        element.x,
+        element.x + element.width,
+      );
+
+      const maxX = Math.max(
+        element.x,
+        element.x + element.width,
+      );
+
+      const minY = Math.min(
+        element.y,
+        element.y + element.height,
+      );
+
+      const maxY = Math.max(
+        element.y,
+        element.y + element.height,
+      );
+
+      return (
+        point.x >= minX &&
+        point.x <= maxX &&
+        point.y >= minY &&
+        point.y <= maxY
+      );
+    }
+
+    if (element.type === "circle") {
+      const radiusX =
+        Math.abs(element.radiusX);
+
+      const radiusY =
+        Math.abs(element.radiusY);
+
+      if (
+        radiusX === 0 ||
+        radiusY === 0
+      ) {
+        return false;
+      }
+
+      const dx =
+        (point.x - element.x) /
+        radiusX;
+
+      const dy =
+        (point.y - element.y) /
+        radiusY;
+
+      return dx * dx + dy * dy <= 1;
     }
 
     if (
-      clickedElement.type === "line" ||
-      clickedElement.type === "arrow"
+      element.type === "line" ||
+      element.type === "arrow"
     ) {
-      setDragOffset({
-        x: point.x - clickedElement.startX,
-        y: point.y - clickedElement.startY,
-      });
+      const x1 = element.start.x;
+      const y1 = element.start.y;
+
+      const x2 = element.end.x;
+      const y2 = element.end.y;
+
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+
+      const lengthSquared =
+        dx * dx + dy * dy;
+
+      if (lengthSquared === 0) {
+        return (
+          Math.hypot(
+            point.x - x1,
+            point.y - y1,
+          ) < 10
+        );
+      }
+
+      let t =
+        ((point.x - x1) * dx +
+          (point.y - y1) * dy) /
+        lengthSquared;
+
+      t = Math.max(
+        0,
+        Math.min(1, t),
+      );
+
+      const closestX =
+        x1 + t * dx;
+
+      const closestY =
+        y1 + t * dy;
+
+      const distance =
+        Math.hypot(
+          point.x - closestX,
+          point.y - closestY,
+        );
+
+      return distance <= 10;
     }
 
-    if (clickedElement.type === "text") {
-      setDragOffset({
-        x: point.x - clickedElement.x,
-        y: point.y - clickedElement.y,
-      });
+    if (element.type === "text") {
+      const canvas =
+        canvasRef.current;
+
+      const context =
+        canvas?.getContext("2d");
+
+      if (!context) {
+        return false;
+      }
+
+      context.font =
+        `${element.fontSize}px sans-serif`;
+
+      const width =
+        context.measureText(
+          element.text,
+        ).width;
+
+      return (
+        point.x >= element.x &&
+        point.x <=
+          element.x + width &&
+        point.y <= element.y &&
+        point.y >=
+          element.y -
+            element.fontSize
+      );
     }
 
-    if (clickedElement.type === "pen") {
-      const firstPoint = clickedElement.points[0];
+    if (element.type === "pen") {
+      return element.points.some(
+        (p) =>
+          Math.hypot(
+            point.x - p.x,
+            point.y - p.y,
+          ) <= 10,
+      );
+    }
 
-      if (firstPoint) {
-        setDragOffset({
-          x: point.x - firstPoint.x,
-          y: point.y - firstPoint.y,
-        });
+    return false;
+  };
+
+  const findElementAtPoint = (
+    point: Point,
+  ): DrawingElement | null => {
+    for (
+      let i = elements.length - 1;
+      i >= 0;
+      i--
+    ) {
+      const element =
+        elements[i];
+
+      if (
+        isPointInsideElement(
+          point,
+          element,
+        )
+      ) {
+        return element;
       }
     }
 
-    event.currentTarget.setPointerCapture(event.pointerId);
+    return null;
   };
 
-  /* ----------------------------- START DRAWING ----------------------------- */
+  // =========================================================
+  // CREATE ELEMENT
+  // =========================================================
 
-  const startPenDrawing = (
+  const createBaseElement = (
+    id: string,
+    type: Tool,
+  ) => ({
+    id,
+    type,
+    strokeColor,
+    strokeWidth,
+    fillColor,
+  });
+
+  // =========================================================
+  // POINTER DOWN
+  // =========================================================
+
+  const handlePointerDown = (
     event: React.PointerEvent<HTMLCanvasElement>,
   ) => {
-    const point = getPoint(event);
+    event.currentTarget.setPointerCapture(
+      event.pointerId,
+    );
 
-    saveHistory();
+    const point =
+      getPoint(event);
 
-    setIsDrawing(true);
-    setStartPoint(point);
+    // -------------------------------------------------------
+    // SELECT
+    // -------------------------------------------------------
 
-    setElements((previousElements) => [
-      ...previousElements,
-      {
-        id: createId(),
-        type: "pen",
-        points: [point],
-        strokeColor,
-        fillColor,
-        strokeWidth,
-      },
-    ]);
+    if (selectedTool === "select") {
+      const element =
+        findElementAtPoint(point);
 
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
+      if (!element) {
+        setSelectedElementId(null);
+        return;
+      }
 
-  const startRectangle = (
-    event: React.PointerEvent<HTMLCanvasElement>,
-  ) => {
-    const point = getPoint(event);
+      saveHistory();
 
-    saveHistory();
+      setSelectedElementId(
+        element.id,
+      );
 
-    setIsDrawing(true);
-    setStartPoint(point);
+      movingElementRef.current =
+        element;
 
-    setElements((previousElements) => [
-      ...previousElements,
-      {
-        id: createId(),
-        type: "rectangle",
-        startX: point.x,
-        startY: point.y,
-        width: 0,
-        height: 0,
-        strokeColor,
-        fillColor,
-        strokeWidth,
-      },
-    ]);
+      moveOffsetRef.current = {
+        x:
+          point.x -
+          (
+            element.type === "pen"
+              ? element.points[0]?.x ?? 0
+              : element.type === "text" ||
+                  element.type ===
+                    "rectangle" ||
+                  element.type ===
+                    "circle"
+                ? element.x
+                : element.start.x
+          ),
 
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
+        y:
+          point.y -
+          (
+            element.type === "pen"
+              ? element.points[0]?.y ?? 0
+              : element.type === "text" ||
+                  element.type ===
+                    "rectangle" ||
+                  element.type ===
+                    "circle"
+                ? element.y
+                : element.start.y
+          ),
+      };
 
-  const startCircle = (
-    event: React.PointerEvent<HTMLCanvasElement>,
-  ) => {
-    const point = getPoint(event);
+      isDrawingRef.current =
+        true;
 
-    saveHistory();
+      return;
+    }
 
-    setIsDrawing(true);
-    setStartPoint(point);
+    // -------------------------------------------------------
+    // ERASER
+    // -------------------------------------------------------
 
-    setElements((previousElements) => [
-      ...previousElements,
-      {
-        id: createId(),
-        type: "circle",
-        centerX: point.x,
-        centerY: point.y,
-        radiusX: 0,
-        radiusY: 0,
-        strokeColor,
-        fillColor,
-        strokeWidth,
-      },
-    ]);
+    if (selectedTool === "eraser") {
+      const element =
+        findElementAtPoint(point);
 
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
+      if (!element) {
+        return;
+      }
 
-  const startLine = (
-    event: React.PointerEvent<HTMLCanvasElement>,
-  ) => {
-    const point = getPoint(event);
+      saveHistory();
 
-    saveHistory();
+      setElements((prev) =>
+        prev.filter(
+          (item) =>
+            item.id !== element.id,
+        ),
+      );
 
-    setIsDrawing(true);
-    setStartPoint(point);
+      return;
+    }
 
-    setElements((previousElements) => [
-      ...previousElements,
-      {
-        id: createId(),
-        type: "line",
-        startX: point.x,
-        startY: point.y,
-        endX: point.x,
-        endY: point.y,
-        strokeColor,
-        fillColor,
-        strokeWidth,
-      },
-    ]);
+    // -------------------------------------------------------
+    // TEXT
+    // -------------------------------------------------------
 
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
+    if (selectedTool === "text") {
+      const text =
+        window.prompt("Enter text:");
 
-  const startArrow = (
-    event: React.PointerEvent<HTMLCanvasElement>,
-  ) => {
-    const point = getPoint(event);
+      if (!text?.trim()) {
+        return;
+      }
 
-    saveHistory();
+      saveHistory();
 
-    setIsDrawing(true);
-    setStartPoint(point);
-
-    setElements((previousElements) => [
-      ...previousElements,
-      {
-        id: createId(),
-        type: "arrow",
-        startX: point.x,
-        startY: point.y,
-        endX: point.x,
-        endY: point.y,
-        strokeColor,
-        fillColor,
-        strokeWidth,
-      },
-    ]);
-
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-
-  const startText = (
-    event: React.PointerEvent<HTMLCanvasElement>,
-  ) => {
-    const point = getPoint(event);
-    const text = window.prompt("Enter text:");
-
-    if (!text?.trim()) return;
-
-    saveHistory();
-
-    setElements((previousElements) => [
-      ...previousElements,
-      {
-        id: createId(),
+      const newElement: DrawingElement = {
+        ...createBaseElement(
+          crypto.randomUUID(),
+          "text",
+        ),
         type: "text",
         x: point.x,
         y: point.y,
         text: text.trim(),
         fontSize,
-        strokeColor,
-        fillColor,
-        strokeWidth,
-      },
-    ]);
-  };
+      };
 
-  /* ----------------------------- POINTER EVENTS ----------------------------- */
+      setElements((prev) => [
+        ...prev,
+        newElement,
+      ]);
 
-  const handlePointerDown = (
-    event: React.PointerEvent<HTMLCanvasElement>,
-  ) => {
-    if (selectedTool === "select") {
-      startSelecting(event);
+      return;
     }
+
+    // -------------------------------------------------------
+    // PEN
+    // -------------------------------------------------------
 
     if (selectedTool === "pen") {
-      startPenDrawing(event);
+      saveHistory();
+
+      const id =
+        crypto.randomUUID();
+
+      currentElementIdRef.current =
+        id;
+
+      startPointRef.current =
+        point;
+
+      isDrawingRef.current =
+        true;
+
+      const newElement: DrawingElement = {
+        ...createBaseElement(
+          id,
+          "pen",
+        ),
+        type: "pen",
+        points: [point],
+      };
+
+      setElements((prev) => [
+        ...prev,
+        newElement,
+      ]);
+
+      return;
     }
 
-    if (selectedTool === "rectangle") {
-      startRectangle(event);
+    // -------------------------------------------------------
+    // RECTANGLE
+    // -------------------------------------------------------
+
+    if (
+      selectedTool === "rectangle"
+    ) {
+      saveHistory();
+
+      const id =
+        crypto.randomUUID();
+
+      currentElementIdRef.current =
+        id;
+
+      startPointRef.current =
+        point;
+
+      isDrawingRef.current =
+        true;
+
+      const newElement: DrawingElement = {
+        ...createBaseElement(
+          id,
+          "rectangle",
+        ),
+        type: "rectangle",
+        x: point.x,
+        y: point.y,
+        width: 0,
+        height: 0,
+      };
+
+      setElements((prev) => [
+        ...prev,
+        newElement,
+      ]);
+
+      return;
     }
+
+    // -------------------------------------------------------
+    // CIRCLE
+    // -------------------------------------------------------
 
     if (selectedTool === "circle") {
-      startCircle(event);
+      saveHistory();
+
+      const id =
+        crypto.randomUUID();
+
+      currentElementIdRef.current =
+        id;
+
+      startPointRef.current =
+        point;
+
+      isDrawingRef.current =
+        true;
+
+      const newElement: DrawingElement = {
+        ...createBaseElement(
+          id,
+          "circle",
+        ),
+        type: "circle",
+        x: point.x,
+        y: point.y,
+        radiusX: 0,
+        radiusY: 0,
+      };
+
+      setElements((prev) => [
+        ...prev,
+        newElement,
+      ]);
+
+      return;
     }
+
+    // -------------------------------------------------------
+    // LINE
+    // -------------------------------------------------------
 
     if (selectedTool === "line") {
-      startLine(event);
+      saveHistory();
+
+      const id =
+        crypto.randomUUID();
+
+      currentElementIdRef.current =
+        id;
+
+      startPointRef.current =
+        point;
+
+      isDrawingRef.current =
+        true;
+
+      const newElement: DrawingElement = {
+        ...createBaseElement(
+          id,
+          "line",
+        ),
+        type: "line",
+        start: point,
+        end: point,
+      };
+
+      setElements((prev) => [
+        ...prev,
+        newElement,
+      ]);
+
+      return;
     }
+
+    // -------------------------------------------------------
+    // ARROW
+    // -------------------------------------------------------
 
     if (selectedTool === "arrow") {
-      startArrow(event);
-    }
+      saveHistory();
 
-    if (selectedTool === "text") {
-      startText(event);
-    }
+      const id =
+        crypto.randomUUID();
 
-    if (selectedTool === "eraser") {
-      const point = getPoint(event);
-      const clickedElement = getElementAtPoint(point);
+      currentElementIdRef.current =
+        id;
 
-      if (clickedElement) {
-        saveHistory();
+      startPointRef.current =
+        point;
 
-        setElements((previousElements) =>
-          previousElements.filter(
-            (element) => element.id !== clickedElement.id,
-          ),
-        );
-      }
+      isDrawingRef.current =
+        true;
+
+      const newElement: DrawingElement = {
+        ...createBaseElement(
+          id,
+          "arrow",
+        ),
+        type: "arrow",
+        start: point,
+        end: point,
+      };
+
+      setElements((prev) => [
+        ...prev,
+        newElement,
+      ]);
+
+      return;
     }
   };
+
+  // =========================================================
+  // POINTER MOVE
+  // =========================================================
 
   const handlePointerMove = (
     event: React.PointerEvent<HTMLCanvasElement>,
   ) => {
-    if (!isDrawing) return;
+    const point =
+      getPoint(event);
 
-    const point = getPoint(event);
+    // -------------------------------------------------------
+    // MOVING SELECTED ELEMENT
+    // -------------------------------------------------------
 
     if (
       selectedTool === "select" &&
-      isMovingElement &&
-      selectedElementId &&
-      dragOffset
+      isDrawingRef.current &&
+      movingElementRef.current &&
+      moveOffsetRef.current
     ) {
-      setElements((previousElements) =>
-        previousElements.map((element) => {
-          if (element.id !== selectedElementId) {
-            return element;
+      const element =
+        movingElementRef.current;
+
+      const offset =
+        moveOffsetRef.current;
+
+      const dx =
+        point.x - offset.x;
+
+      const dy =
+        point.y - offset.y;
+
+      setElements((prev) =>
+        prev.map((item) => {
+          if (
+            item.id !== element.id
+          ) {
+            return item;
           }
 
-          if (element.type === "rectangle") {
-            return {
-              ...element,
-              startX: point.x - dragOffset.x,
-              startY: point.y - dragOffset.y,
-            };
-          }
+          if (item.type === "pen") {
+            const originalFirst =
+              element.points[0];
 
-          if (element.type === "circle") {
+            if (!originalFirst) {
+              return item;
+            }
+
+            const deltaX =
+              dx - originalFirst.x;
+
+            const deltaY =
+              dy - originalFirst.y;
+
             return {
-              ...element,
-              centerX: point.x - dragOffset.x,
-              centerY: point.y - dragOffset.y,
+              ...item,
+              points:
+                element.points.map(
+                  (p) => ({
+                    x:
+                      p.x + deltaX,
+                    y:
+                      p.y + deltaY,
+                  }),
+                ),
             };
           }
 
           if (
-            element.type === "line" ||
-            element.type === "arrow"
+            item.type ===
+              "rectangle" ||
+            item.type === "circle" ||
+            item.type === "text"
           ) {
+            return {
+              ...item,
+              x: dx,
+              y: dy,
+            };
+          }
+
+          if (
+            item.type === "line" ||
+            item.type === "arrow"
+          ) {
+            const originalStart =
+              element.start;
+
             const deltaX =
-              point.x - dragOffset.x - element.startX;
+              dx -
+              originalStart.x;
 
             const deltaY =
-              point.y - dragOffset.y - element.startY;
+              dy -
+              originalStart.y;
 
             return {
-              ...element,
-              startX: element.startX + deltaX,
-              startY: element.startY + deltaY,
-              endX: element.endX + deltaX,
-              endY: element.endY + deltaY,
+              ...item,
+              start: {
+                x:
+                  element.start.x +
+                  deltaX,
+                y:
+                  element.start.y +
+                  deltaY,
+              },
+              end: {
+                x:
+                  element.end.x +
+                  deltaX,
+                y:
+                  element.end.y +
+                  deltaY,
+              },
             };
           }
 
-          if (element.type === "text") {
-            return {
-              ...element,
-              x: point.x - dragOffset.x,
-              y: point.y - dragOffset.y,
-            };
-          }
-
-          if (element.type === "pen") {
-            const firstPoint = element.points[0];
-
-            if (!firstPoint) return element;
-
-            const moveX =
-              point.x - dragOffset.x - firstPoint.x;
-
-            const moveY =
-              point.y - dragOffset.y - firstPoint.y;
-
-            return {
-              ...element,
-              points: element.points.map((linePoint) => ({
-                x: linePoint.x + moveX,
-                y: linePoint.y + moveY,
-              })),
-            };
-          }
-
-          return element;
+          return item;
         }),
       );
 
       return;
     }
 
-    setElements((previousElements) => {
-      if (previousElements.length === 0) {
-        return previousElements;
-      }
-
-      const updatedElements = [...previousElements];
-      const lastElement =
-        updatedElements[updatedElements.length - 1];
-
-      if (!lastElement) {
-        return previousElements;
-      }
-
-      if (
-        selectedTool === "pen" &&
-        lastElement.type === "pen"
-      ) {
-        updatedElements[updatedElements.length - 1] = {
-          ...lastElement,
-          points: [...lastElement.points, point],
-        };
-      }
-
-      if (
-        selectedTool === "rectangle" &&
-        lastElement.type === "rectangle" &&
-        startPoint
-      ) {
-        updatedElements[updatedElements.length - 1] = {
-          ...lastElement,
-          width: point.x - startPoint.x,
-          height: point.y - startPoint.y,
-        };
-      }
-
-      if (
-        selectedTool === "circle" &&
-        lastElement.type === "circle" &&
-        startPoint
-      ) {
-        updatedElements[updatedElements.length - 1] = {
-          ...lastElement,
-          radiusX: Math.abs(point.x - startPoint.x),
-          radiusY: Math.abs(point.y - startPoint.y),
-        };
-      }
-
-      if (
-        selectedTool === "line" &&
-        lastElement.type === "line"
-      ) {
-        updatedElements[updatedElements.length - 1] = {
-          ...lastElement,
-          endX: point.x,
-          endY: point.y,
-        };
-      }
-
-      if (
-        selectedTool === "arrow" &&
-        lastElement.type === "arrow"
-      ) {
-        updatedElements[updatedElements.length - 1] = {
-          ...lastElement,
-          endX: point.x,
-          endY: point.y,
-        };
-      }
-
-      return updatedElements;
-    });
-  };
-
-  const stopDrawing = (
-    event?: React.PointerEvent<HTMLCanvasElement>,
-  ) => {
-    setIsDrawing(false);
-    setStartPoint(null);
-    setIsMovingElement(false);
-    setDragOffset(null);
+    // -------------------------------------------------------
+    // DRAWING
+    // -------------------------------------------------------
 
     if (
-      event &&
-      event.currentTarget.hasPointerCapture(event.pointerId)
+      !isDrawingRef.current ||
+      !currentElementIdRef.current ||
+      !startPointRef.current
     ) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
+      return;
     }
+
+    const elementId =
+      currentElementIdRef.current;
+
+    const start =
+      startPointRef.current;
+
+    setElements((prev) =>
+      prev.map((element) => {
+        if (
+          element.id !== elementId
+        ) {
+          return element;
+        }
+
+        // PEN
+
+        if (element.type === "pen") {
+          return {
+            ...element,
+            points: [
+              ...element.points,
+              point,
+            ],
+          };
+        }
+
+        // RECTANGLE
+
+        if (
+          element.type ===
+          "rectangle"
+        ) {
+          return {
+            ...element,
+            width:
+              point.x - start.x,
+            height:
+              point.y - start.y,
+          };
+        }
+
+        // CIRCLE
+
+        if (
+          element.type === "circle"
+        ) {
+          return {
+            ...element,
+            radiusX:
+              point.x - start.x,
+            radiusY:
+              point.y - start.y,
+          };
+        }
+
+        // LINE
+
+        if (element.type === "line") {
+          return {
+            ...element,
+            end: point,
+          };
+        }
+
+        // ARROW
+
+        if (
+          element.type === "arrow"
+        ) {
+          return {
+            ...element,
+            end: point,
+          };
+        }
+
+        return element;
+      }),
+    );
   };
 
-  /* ----------------------------- DELETE/CLEAR ----------------------------- */
+  // =========================================================
+  // POINTER UP
+  // =========================================================
 
-  const handleDeleteSelected = useCallback(() => {
-    if (!selectedElementId) return;
+  const handlePointerUp = (
+    event: React.PointerEvent<HTMLCanvasElement>,
+  ) => {
+    if (
+      event.currentTarget.hasPointerCapture(
+        event.pointerId,
+      )
+    ) {
+      event.currentTarget.releasePointerCapture(
+        event.pointerId,
+      );
+    }
+
+    isDrawingRef.current =
+      false;
+
+    currentElementIdRef.current =
+      null;
+
+    startPointRef.current =
+      null;
+
+    movingElementRef.current =
+      null;
+
+    moveOffsetRef.current =
+      null;
+  };
+
+  // =========================================================
+  // POINTER CANCEL
+  // =========================================================
+
+  const handlePointerCancel = (
+    event: React.PointerEvent<HTMLCanvasElement>,
+  ) => {
+    if (
+      event.currentTarget.hasPointerCapture(
+        event.pointerId,
+      )
+    ) {
+      event.currentTarget.releasePointerCapture(
+        event.pointerId,
+      );
+    }
+
+    isDrawingRef.current =
+      false;
+
+    currentElementIdRef.current =
+      null;
+
+    startPointRef.current =
+      null;
+
+    movingElementRef.current =
+      null;
+
+    moveOffsetRef.current =
+      null;
+  };
+
+  // =========================================================
+  // DELETE SELECTED
+  // =========================================================
+
+  const handleDelete = () => {
+    if (!selectedElementId) {
+      return;
+    }
 
     saveHistory();
 
-    setElements((previousElements) =>
-      previousElements.filter(
-        (element) => element.id !== selectedElementId,
+    setElements((prev) =>
+      prev.filter(
+        (element) =>
+          element.id !==
+          selectedElementId,
       ),
     );
 
     setSelectedElementId(null);
-  }, [saveHistory, selectedElementId]);
+  };
 
-  const handleClearCanvas = () => {
-    if (elements.length === 0) return;
+  // =========================================================
+  // CLEAR CANVAS
+  // =========================================================
+
+  const handleClear = () => {
+    if (elements.length === 0) {
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        "Are you sure you want to clear the canvas?",
+      );
+
+    if (!confirmed) {
+      return;
+    }
 
     saveHistory();
+
     setElements([]);
+
     setSelectedElementId(null);
   };
 
-  /* ----------------------------- SAVE DRAWING ----------------------------- */
+  // =========================================================
+  // SAVE DRAWING
+  // =========================================================
 
   const saveDrawing = useCallback(
-    async (showMessage = true) => {
-      const token = localStorage.getItem("token");
+    async () => {
+      if (!slug) {
+        return;
+      }
+
+      const token =
+        localStorage.getItem("token");
 
       if (!token) {
-        setSaveMessage("Token not found");
+        console.error(
+          "❌ No token found",
+        );
         return;
       }
 
       try {
         setIsSaving(true);
 
-        const response = await fetch(
-          `${HTTP_BACKEND_URL}/drawing/${encodeURIComponent(slug)}`,
-          {
+        const url =
+          `${HTTP_BACKEND_URL}/drawing/${slug}`;
+
+        console.log(
+          "💾 Saving drawing to:",
+          url,
+        );
+
+        const response =
+          await fetch(url, {
             method: "PUT",
             headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
+              "Content-Type":
+                "application/json",
+              Authorization:
+                `Bearer ${token}`,
             },
             body: JSON.stringify({
               elements,
             }),
-          },
-        );
-
-        const data = await response.json();
+          });
 
         if (!response.ok) {
+          const errorText =
+            await response.text();
+
           throw new Error(
-            data.message || "Failed to save drawing",
+            `Failed to save drawing: ${response.status} ${errorText}`,
           );
         }
 
-        if (showMessage) {
-          setSaveMessage("Drawing saved successfully");
+        const data =
+          await response.json();
 
-          window.setTimeout(() => {
-            setSaveMessage("");
-          }, 2500);
-        }
+        console.log(
+          "✅ Drawing saved:",
+          data,
+        );
       } catch (error) {
-        console.error("SAVE DRAWING ERROR:", error);
-        setSaveMessage("Failed to save drawing");
+        console.error(
+          "❌ Save drawing error:",
+          error,
+        );
       } finally {
         setIsSaving(false);
       }
@@ -898,172 +1133,505 @@ const skipDrawingBroadcastRef = useRef(false);
     [elements, slug],
   );
 
-  /* ----------------------------- LOAD DRAWING ----------------------------- */
+  // =========================================================
+  // LOAD DRAWING
+  // =========================================================
 
-  useEffect(() => {
-    const loadDrawing = async () => {
-      const token = localStorage.getItem("token");
+  const loadDrawing = useCallback(
+    async () => {
+      if (!slug) {
+        return;
+      }
+
+      const token =
+        localStorage.getItem("token");
 
       if (!token) {
+        console.error(
+          "❌ No token found",
+        );
+
         setIsLoading(false);
+
         return;
       }
 
       try {
-        const response = await fetch(
-          `${HTTP_BACKEND_URL}/drawing/${encodeURIComponent(slug)}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          },
+        setIsLoading(true);
+
+        const url =
+          `${HTTP_BACKEND_URL}/drawing/${slug}`;
+
+        console.log(
+          "📥 Loading drawing from:",
+          url,
         );
 
-        const data = await response.json();
+        const response =
+          await fetch(url, {
+            method: "GET",
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+            },
+          });
+
+        console.log(
+          "📥 Load drawing status:",
+          response.status,
+        );
 
         if (!response.ok) {
+          const errorText =
+            await response.text();
+
           throw new Error(
-            data.message || "Failed to load drawing",
+            `Failed to load drawing: ${response.status} ${errorText}`,
           );
         }
 
-        const savedElements = data.drawing?.data?.elements;
+        const data =
+          await response.json();
 
-       if (Array.isArray(savedElements)) {
-  // This drawing came from Neon, so don't broadcast it
-  skipDrawingBroadcastRef.current = true;
-  setElements(savedElements);
-}
+        console.log(
+          "📥 Drawing response:",
+          data,
+        );
+
+        const drawingData =
+          data?.drawing?.data;
+
+        const loadedElements =
+          Array.isArray(
+            drawingData?.elements,
+          )
+            ? drawingData.elements
+            : [];
+
+        /*
+         * Prevent the loaded drawing
+         * from being broadcast back.
+         */
+        skipDrawingBroadcastRef.current =
+          true;
+
+        setElements(
+          loadedElements as DrawingElement[],
+        );
       } catch (error) {
-        console.error("LOAD DRAWING ERROR:", error);
+        console.error(
+          "❌ Load drawing error:",
+          error,
+        );
       } finally {
         setIsLoading(false);
       }
-    };
+    },
+    [slug],
+  );
 
-    loadDrawing();
-  }, [slug]);
-
-  /* ----------------------------- AUTO SAVE ----------------------------- */
+  // =========================================================
+  // LOAD DRAWING ON ROOM OPEN
+  // =========================================================
 
   useEffect(() => {
-    if (isLoading) return;
+    loadDrawing();
+  }, [loadDrawing]);
 
-    const timeout = window.setTimeout(() => {
-      saveDrawing(false);
-    }, 1200);
+  // =========================================================
+  // AUTO SAVE
+  // =========================================================
+
+  useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+
+    /*
+     * Do NOT check elements.length here.
+     *
+     * An empty array is also a valid drawing state.
+     * This allows Clear to save:
+     *
+     * {
+     *   elements: []
+     * }
+     */
+
+    const timer =
+      setTimeout(() => {
+        saveDrawing();
+      }, 1000);
 
     return () => {
-      window.clearTimeout(timeout);
+      clearTimeout(timer);
     };
-  }, [elements, isLoading, saveDrawing]);
+  }, [
+    elements,
+    isLoading,
+    saveDrawing,
+  ]);
 
-  /* ----------------------------- WEBSOCKET ----------------------------- */
+  // =========================================================
+  // WEBSOCKET
+  // =========================================================
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    if (!slug) {
+      return;
+    }
 
-    if (!token) return;
+    const token =
+      localStorage.getItem("token");
 
-    const socket = new WebSocket(
-      `${WS_BACKEND_URL}?token=${encodeURIComponent(token)}`,
-    );
+    if (!token) {
+      return;
+    }
+
+    const socket =
+      new WebSocket(
+        `${WS_BACKEND_URL}?token=${encodeURIComponent(
+          token,
+        )}`,
+      );
 
     wsRef.current = socket;
 
-   socket.onopen = () => {
-  setIsChatConnected(true);
+    socket.onopen = () => {
+      console.log(
+        "✅ WebSocket connected",
+      );
 
-  hasJoinedRoomRef.current = false;
+      setIsConnected(true);
+      setIsChatConnected(true);
 
-  socket.send(
-    JSON.stringify({
-      type: "join_room",
-      roomId: slug,
-    }),
-  );
-
-  socket.send(
-    JSON.stringify({
-      type: "get_chats",
-      roomId: slug,
-    }),
-  );
-};
+      socket.send(
+        JSON.stringify({
+          type: "join_room",
+          roomId: slug,
+        }),
+      );
+    };
 
     socket.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data);
-        if (data.type === "room_joined") {
-  if (data.roomId === slug) {
-    hasJoinedRoomRef.current = true;
-  }
-}
+        const data =
+          JSON.parse(event.data);
 
-        if (data.type === "room_chats") {
-          setChatMessages(data.messages ?? []);
-        }
+        console.log(
+          "📩 WebSocket message:",
+          data,
+        );
+
+        // ---------------------------------------------------
+        // JOINED ROOM
+        // ---------------------------------------------------
+
         if (
-  data.type === "room_users" &&
-  data.roomId === slug &&
-  Array.isArray(data.users)
-) {
-  setRoomUsers(data.users);
-}
+          data.type ===
+          "joined_room"
+        ) {
+          hasJoinedRoomRef.current =
+            true;
 
-        if (data.type === "chat") {
-          setChatMessages((previousMessages) => [
-            ...previousMessages,
-            {
-              id: data.chatId,
-              chatId: data.chatId,
-              message: data.message,
-              userId: data.userId,
-            },
-          ]);
+          socket.send(
+            JSON.stringify({
+              type: "get_chats",
+              roomId: slug,
+            }),
+          );
+
+          return;
         }
-        if (data.type === "drawing") {
-  if (data.roomId === slug && Array.isArray(data.elements)) {
-    // Drawing came from another user
-    skipDrawingBroadcastRef.current = true;
 
-    setElements(data.elements);
+        // ---------------------------------------------------
+        // ALREADY JOINED
+        // ---------------------------------------------------
+
+        if (
+          data.type ===
+          "already_joined"
+        ) {
+          hasJoinedRoomRef.current =
+            true;
+
+          socket.send(
+            JSON.stringify({
+              type: "get_chats",
+              roomId: slug,
+            }),
+          );
+
+          return;
+        }
+
+        // ---------------------------------------------------
+        // ROOM USERS
+        // ---------------------------------------------------
+
+        if (
+          data.type ===
+          "room_users"
+        ) {
+          if (
+            data.roomId === slug
+          ) {
+            setRoomUsers(
+              Array.isArray(
+                data.users,
+              )
+                ? data.users
+                : [],
+            );
+          }
+
+          return;
+        }
+
+        // ---------------------------------------------------
+        // USER JOINED
+        // ---------------------------------------------------
+
+        if (
+          data.type ===
+          "user_joined"
+        ) {
+          console.log(
+            "User joined:",
+            data.userId,
+          );
+
+          return;
+        }
+
+        // ---------------------------------------------------
+        // USER LEFT
+        // ---------------------------------------------------
+
+        if (
+          data.type ===
+          "user_left"
+        ) {
+          console.log(
+            "User left:",
+            data.userId,
+          );
+
+          return;
+        }
+
+        // ---------------------------------------------------
+        // DRAWING
+        // ---------------------------------------------------
+
+        if (
+          data.type ===
+          "drawing"
+        ) {
+          if (
+            data.roomId !== slug
+          ) {
+            return;
+          }
+
+          if (
+            !Array.isArray(
+              data.elements,
+            )
+          ) {
+            return;
+          }
+
+          skipDrawingBroadcastRef.current =
+            true;
+
+          setElements(
+            data.elements as DrawingElement[],
+          );
+
+          return;
+        }
+
+        // ---------------------------------------------------
+        // ROOM CHATS
+        // ---------------------------------------------------
+
+      if (data.type === "room_chats") {
+  if (data.roomId !== slug) {
+    return;
   }
+
+  const messages = Array.isArray(data.messages)
+    ? data.messages
+    : [];
+
+  setChatMessages(
+    messages.map((message: any) => ({
+      id: message.id,
+      chatId: message.chatId ?? message.id,
+      message: message.message,
+      userId: message.userId,
+      username: message.username,
+    })),
+  );
+
+  return;
 }
 
-        if (data.type === "error") {
-          console.error("WebSocket error:", data.message);
+        // ---------------------------------------------------
+        // NEW CHAT MESSAGE
+        // ---------------------------------------------------
+
+       if (data.type === "chat") {
+  if (data.roomId !== slug) {
+    return;
+  }
+
+  setChatMessages((prev) => [
+    ...prev,
+    {
+      chatId: data.chatId,
+      message: data.message,
+      userId: data.userId,
+      username: data.username,
+    },
+  ]);
+
+  return;
+}
+
+        // ---------------------------------------------------
+        // ERROR
+        // ---------------------------------------------------
+
+        if (
+          data.type === "error"
+        ) {
+          console.error(
+            "WebSocket error:",
+            data.message,
+          );
+
+          return;
         }
       } catch (error) {
-        console.error("Invalid WebSocket response:", error);
+        console.error(
+          "Invalid WebSocket message:",
+          error,
+        );
       }
     };
 
     socket.onerror = (error) => {
-      console.error("WebSocket connection error:", error);
+      console.error(
+        "❌ WebSocket error:",
+        error,
+      );
+
+      setIsConnected(false);
       setIsChatConnected(false);
     };
 
     socket.onclose = () => {
+      console.log(
+        "🔌 WebSocket disconnected",
+      );
+
+      setIsConnected(false);
       setIsChatConnected(false);
+
+      hasJoinedRoomRef.current =
+        false;
     };
 
     return () => {
+      hasJoinedRoomRef.current =
+        false;
+
+      if (
+        socket.readyState ===
+        WebSocket.OPEN
+      ) {
+        socket.send(
+          JSON.stringify({
+            type: "leave_room",
+            roomId: slug,
+          }),
+        );
+      }
+
       socket.close();
+
       wsRef.current = null;
     };
   }, [slug]);
 
-  /* ----------------------------- CHAT ----------------------------- */
+  // =========================================================
+  // BROADCAST DRAWING
+  // =========================================================
+
+  useEffect(() => {
+    if (
+      !hasJoinedRoomRef.current
+    ) {
+      return;
+    }
+
+    if (
+      skipDrawingBroadcastRef.current
+    ) {
+      skipDrawingBroadcastRef.current =
+        false;
+
+      return;
+    }
+
+    const socket =
+      wsRef.current;
+
+    if (
+      !socket ||
+      socket.readyState !==
+        WebSocket.OPEN
+    ) {
+      return;
+    }
+
+    socket.send(
+      JSON.stringify({
+        type: "drawing",
+        roomId: slug,
+        elements,
+      }),
+    );
+  }, [elements, slug]);
+
+  // =========================================================
+  // SEND CHAT
+  // =========================================================
 
   const sendChatMessage = () => {
-    const cleanMessage = chatInput.trim();
+    const message =
+      chatInput.trim();
 
-    if (!cleanMessage) return;
+    if (!message) {
+      return;
+    }
 
-    const socket = wsRef.current;
+    const socket =
+      wsRef.current;
 
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
+    if (
+      !socket ||
+      socket.readyState !==
+        WebSocket.OPEN
+    ) {
+      return;
+    }
+
+    if (
+      !hasJoinedRoomRef.current
+    ) {
       return;
     }
 
@@ -1071,666 +1639,299 @@ const skipDrawingBroadcastRef = useRef(false);
       JSON.stringify({
         type: "chat",
         roomId: slug,
-        message: cleanMessage,
+        message,
       }),
     );
 
     setChatInput("");
-    chatInputRef.current?.focus();
   };
 
-  useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({
-      behavior: "smooth",
-    });
-  }, [chatMessages]);
-
-  /* ----------------------------- KEYBOARD SHORTCUTS ----------------------------- */
+  // =========================================================
+  // KEYBOARD SHORTCUTS
+  // =========================================================
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement;
+    const handleKeyDown = (
+      event: KeyboardEvent,
+    ) => {
+      const target =
+        event.target as HTMLElement;
 
-      const isTyping =
+      if (
         target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA";
-
-      if (
-        !isTyping &&
-        (event.key === "Delete" ||
-          event.key === "Backspace")
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
       ) {
-        handleDeleteSelected();
+        return;
       }
 
       if (
-        !isTyping &&
-        event.ctrlKey &&
-        event.key.toLowerCase() === "z"
+        (event.ctrlKey ||
+          event.metaKey) &&
+        event.key.toLowerCase() ===
+          "z"
       ) {
         event.preventDefault();
-        handleUndo();
+
+        if (event.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+
+        return;
       }
 
       if (
-        !isTyping &&
-        event.ctrlKey &&
-        event.key.toLowerCase() === "y"
+        (event.ctrlKey ||
+          event.metaKey) &&
+        event.key.toLowerCase() ===
+          "y"
       ) {
         event.preventDefault();
+
         handleRedo();
+
+        return;
       }
 
       if (
-        !isTyping &&
-        event.ctrlKey &&
-        event.key.toLowerCase() === "s"
+        event.key === "Delete" ||
+        event.key === "Backspace"
       ) {
-        event.preventDefault();
-        saveDrawing();
+        handleDelete();
       }
 
-      if (!isTyping) {
-        if (event.key.toLowerCase() === "v") {
-          setSelectedTool("select");
-        }
+      if (
+        event.key.toLowerCase() ===
+        "v"
+      ) {
+        setSelectedTool("select");
+      }
 
-        if (event.key.toLowerCase() === "p") {
-          setSelectedTool("pen");
-        }
+      if (
+        event.key.toLowerCase() ===
+        "p"
+      ) {
+        setSelectedTool("pen");
+      }
 
-        if (event.key.toLowerCase() === "r") {
-          setSelectedTool("rectangle");
-        }
+      if (
+        event.key.toLowerCase() ===
+        "r"
+      ) {
+        setSelectedTool("rectangle");
+      }
 
-        if (event.key.toLowerCase() === "c") {
-          setSelectedTool("circle");
-        }
+      if (
+        event.key.toLowerCase() ===
+        "c"
+      ) {
+        setSelectedTool("circle");
+      }
 
-        if (event.key.toLowerCase() === "l") {
-          setSelectedTool("line");
-        }
+      if (
+        event.key.toLowerCase() ===
+        "l"
+      ) {
+        setSelectedTool("line");
+      }
 
-        if (event.key.toLowerCase() === "a") {
-          setSelectedTool("arrow");
-        }
+      if (
+        event.key.toLowerCase() ===
+        "a"
+      ) {
+        setSelectedTool("arrow");
+      }
 
-        if (event.key.toLowerCase() === "t") {
-          setSelectedTool("text");
-        }
+      if (
+        event.key.toLowerCase() ===
+        "t"
+      ) {
+        setSelectedTool("text");
+      }
 
-        if (event.key === "Escape") {
-          setSelectedElementId(null);
-          setSelectedTool("select");
-        }
+      if (
+        event.key.toLowerCase() ===
+        "e"
+      ) {
+        setSelectedTool("eraser");
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [
-    handleDeleteSelected,
-    handleRedo,
-    handleUndo,
-    saveDrawing,
-  ]);
-  /* ----------------------------- REALTIME DRAWING ----------------------------- */
-
-useEffect(() => {
-  if (isLoading) return;
-
-  const socket = wsRef.current;
-
-  if (
-    !socket ||
-    socket.readyState !== WebSocket.OPEN
-  ) {
-    return;
-  }
-
-  // Don't send drawing back if it came from another user
-  if (skipDrawingBroadcastRef.current) {
-    skipDrawingBroadcastRef.current = false;
-    return;
-  }
-
-  socket.send(
-    JSON.stringify({
-      type: "drawing",
-      roomId: slug,
-      elements,
-    }),
-  );
-}, [elements, isLoading, slug]);
-
-  /* ----------------------------- DRAW CANVAS ----------------------------- */
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-
-    if (!canvas) return;
-
-    const context = canvas.getContext("2d");
-
-    if (!context) return;
-
-    context.clearRect(
-      0,
-      0,
-      CANVAS_WIDTH,
-      CANVAS_HEIGHT,
+    window.addEventListener(
+      "keydown",
+      handleKeyDown,
     );
 
-    context.save();
-    context.scale(zoom, zoom);
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        handleKeyDown,
+      );
+    };
+  }, [
+    elements,
+    history,
+    redoStack,
+    selectedElementId,
+  ]);
 
-    context.lineCap = "round";
-    context.lineJoin = "round";
+  // =========================================================
+  // ZOOM
+  // =========================================================
 
-    elements.forEach((element) => {
-      const isSelected =
-        element.id === selectedElementId;
+  const zoomIn = () => {
+    setZoom((prev) =>
+      Math.min(
+        2,
+        Number(
+          (prev + 0.1).toFixed(2),
+        ),
+      ),
+    );
+  };
 
-      context.strokeStyle = isSelected
-        ? "#2563eb"
-        : element.strokeColor;
+  const zoomOut = () => {
+    setZoom((prev) =>
+      Math.max(
+        0.5,
+        Number(
+          (prev - 0.1).toFixed(2),
+        ),
+      ),
+    );
+  };
 
-      context.fillStyle =
-        element.fillColor === "transparent"
-          ? "transparent"
-          : element.fillColor;
+  const resetZoom = () => {
+    setZoom(1);
+  };
 
-      context.lineWidth = isSelected
-        ? element.strokeWidth + 2
-        : element.strokeWidth;
-
-      if (element.type === "pen") {
-        if (element.points.length === 0) return;
-
-        const firstPoint = element.points[0];
-
-        if (!firstPoint) return;
-
-        context.beginPath();
-        context.moveTo(firstPoint.x, firstPoint.y);
-
-        element.points.forEach((point) => {
-          context.lineTo(point.x, point.y);
-        });
-
-        context.stroke();
-      }
-
-      if (element.type === "rectangle") {
-        if (element.fillColor !== "transparent") {
-          context.fillRect(
-            element.startX,
-            element.startY,
-            element.width,
-            element.height,
-          );
-        }
-
-        context.strokeRect(
-          element.startX,
-          element.startY,
-          element.width,
-          element.height,
-        );
-      }
-
-      if (element.type === "circle") {
-        context.beginPath();
-
-        context.ellipse(
-          element.centerX,
-          element.centerY,
-          element.radiusX,
-          element.radiusY,
-          0,
-          0,
-          Math.PI * 2,
-        );
-
-        if (element.fillColor !== "transparent") {
-          context.fill();
-        }
-
-        context.stroke();
-      }
-
-      if (
-        element.type === "line" ||
-        element.type === "arrow"
-      ) {
-        context.beginPath();
-
-        context.moveTo(element.startX, element.startY);
-        context.lineTo(element.endX, element.endY);
-        context.stroke();
-
-        if (element.type === "arrow") {
-          const angle = Math.atan2(
-            element.endY - element.startY,
-            element.endX - element.startX,
-          );
-
-          const arrowLength = 18;
-
-          context.beginPath();
-
-          context.moveTo(element.endX, element.endY);
-
-          context.lineTo(
-            element.endX -
-              arrowLength * Math.cos(angle - Math.PI / 6),
-            element.endY -
-              arrowLength * Math.sin(angle - Math.PI / 6),
-          );
-
-          context.moveTo(element.endX, element.endY);
-
-          context.lineTo(
-            element.endX -
-              arrowLength * Math.cos(angle + Math.PI / 6),
-            element.endY -
-              arrowLength * Math.sin(angle + Math.PI / 6),
-          );
-
-          context.stroke();
-        }
-      }
-
-      if (element.type === "text") {
-        context.font = `${element.fontSize}px sans-serif`;
-        context.fillStyle = isSelected
-          ? "#2563eb"
-          : element.strokeColor;
-
-        context.fillText(
-          element.text,
-          element.x,
-          element.y,
-        );
-      }
-    });
-
-    context.restore();
-  }, [elements, selectedElementId, zoom]);
-
-  /* ----------------------------- TOOL BUTTON ----------------------------- */
-
-  const toolButtonClass = (tool: Tool) =>
-    `w-full rounded-md px-2 py-2 text-sm font-medium transition ${
-      selectedTool === tool
-        ? "bg-blue-600 text-white"
-        : "bg-gray-100 text-gray-800 hover:bg-gray-200"
-    }`;
+  // =========================================================
+  // RENDER
+  // =========================================================
 
   return (
-    <div className="flex min-h-screen flex-col bg-gray-100">
-      {/* NAVBAR */}
+    <div className="flex h-screen flex-col bg-gray-100">
+      {/* HEADER */}
 
-      <nav className="flex flex-wrap items-center justify-between gap-3 bg-gray-900 px-5 py-4 text-white">
-        <h1 className="text-xl font-bold">
-          Excalidraw Clone
-        </h1>
+      <RoomHeader
+        slug={slug}
+        isConnected={isConnected}
+        roomUsersCount={
+          roomUsers.length
+        }
+        isSaving={isSaving}
+        onSave={saveDrawing}
+      />
 
-        <div className="flex items-center gap-4 text-sm">
-          <span>
-            Room:{" "}
-            <strong className="text-blue-300">
-              {slug}
-            </strong>
-          </span>
+      {/* MAIN */}
 
-          <span
-            className={
-              isChatConnected
-                ? "text-green-300"
-                : "text-red-300"
-            }
-          >
-              <span>
-    👥 {roomUsers.length} online
-  </span>
-            {isChatConnected
-              ? "● Connected"
-              : "● Disconnected"}
-          </span>
-
-          <button
-            onClick={() => saveDrawing()}
-            disabled={isSaving}
-            className="rounded-md bg-green-600 px-4 py-2 font-medium hover:bg-green-700 disabled:opacity-50"
-          >
-            {isSaving ? "Saving..." : "Save"}
-          </button>
-        </div>
-      </nav>
-
-      <div className="flex flex-1">
+      <div className="flex min-h-0 flex-1">
         {/* TOOLBAR */}
 
-        <aside className="flex w-32 shrink-0 flex-col gap-2 border-r bg-white p-3">
-          <button
-            onClick={() => setSelectedTool("select")}
-            className={toolButtonClass("select")}
-          >
-            🖱 Select
-          </button>
-
-          <button
-            onClick={() => setSelectedTool("pen")}
-            className={toolButtonClass("pen")}
-          >
-            ✏️ Pen
-          </button>
-
-          <button
-            onClick={() => setSelectedTool("rectangle")}
-            className={toolButtonClass("rectangle")}
-          >
-            ▭ Rect
-          </button>
-
-          <button
-            onClick={() => setSelectedTool("circle")}
-            className={toolButtonClass("circle")}
-          >
-            ◯ Circle
-          </button>
-
-          <button
-            onClick={() => setSelectedTool("line")}
-            className={toolButtonClass("line")}
-          >
-            ╱ Line
-          </button>
-
-          <button
-            onClick={() => setSelectedTool("arrow")}
-            className={toolButtonClass("arrow")}
-          >
-            ➜ Arrow
-          </button>
-
-          <button
-            onClick={() => setSelectedTool("text")}
-            className={toolButtonClass("text")}
-          >
-            T Text
-          </button>
-
-          <button
-            onClick={() => setSelectedTool("eraser")}
-            className={toolButtonClass("eraser")}
-          >
-            🧹 Eraser
-          </button>
-
-          <div className="my-2 h-px bg-gray-200" />
-
-          {/* COLORS */}
-
-          <label className="text-xs font-semibold text-gray-600">
-            Stroke
-          </label>
-
-          <input
-            type="color"
-            value={strokeColor}
-            onChange={(event) =>
-              setStrokeColor(event.target.value)
-            }
-            className="h-9 w-full cursor-pointer"
-          />
-
-          <label className="text-xs font-semibold text-gray-600">
-            Fill
-          </label>
-
-          <select
-            value={fillColor}
-            onChange={(event) =>
-              setFillColor(event.target.value)
-            }
-            className="w-full rounded border px-1 py-2 text-xs"
-          >
-            <option value="transparent">None</option>
-            <option value="#fecaca">Red</option>
-            <option value="#fed7aa">Orange</option>
-            <option value="#fef08a">Yellow</option>
-            <option value="#bbf7d0">Green</option>
-            <option value="#bfdbfe">Blue</option>
-            <option value="#e9d5ff">Purple</option>
-            <option value="#e5e7eb">Gray</option>
-          </select>
-
-          <label className="text-xs font-semibold text-gray-600">
-            Stroke width
-          </label>
-
-          <select
-            value={strokeWidth}
-            onChange={(event) =>
-              setStrokeWidth(Number(event.target.value))
-            }
-            className="w-full rounded border px-1 py-2 text-xs"
-          >
-            <option value={1}>1 px</option>
-            <option value={2}>2 px</option>
-            <option value={3}>3 px</option>
-            <option value={5}>5 px</option>
-            <option value={8}>8 px</option>
-          </select>
-
-          <label className="text-xs font-semibold text-gray-600">
-            Text size
-          </label>
-
-          <select
-            value={fontSize}
-            onChange={(event) =>
-              setFontSize(Number(event.target.value))
-            }
-            className="w-full rounded border px-1 py-2 text-xs"
-          >
-            <option value={16}>16 px</option>
-            <option value={20}>20 px</option>
-            <option value={24}>24 px</option>
-            <option value={32}>32 px</option>
-            <option value={40}>40 px</option>
-          </select>
-
-          <div className="my-2 h-px bg-gray-200" />
-
-          {/* HISTORY */}
-
-          <button
-            onClick={handleUndo}
-            disabled={history.length === 0}
-            className="w-full rounded-md bg-gray-800 px-2 py-2 text-sm text-white hover:bg-gray-700 disabled:opacity-40"
-          >
-            ↶ Undo
-          </button>
-
-          <button
-            onClick={handleRedo}
-            disabled={redoStack.length === 0}
-            className="w-full rounded-md bg-gray-800 px-2 py-2 text-sm text-white hover:bg-gray-700 disabled:opacity-40"
-          >
-            ↷ Redo
-          </button>
-
-          <button
-            onClick={handleDeleteSelected}
-            disabled={!selectedElementId}
-            className="w-full rounded-md bg-orange-600 px-2 py-2 text-sm text-white hover:bg-orange-700 disabled:opacity-40"
-          >
-            Delete
-          </button>
-
-          <button
-            onClick={handleClearCanvas}
-            disabled={elements.length === 0}
-            className="w-full rounded-md bg-red-600 px-2 py-2 text-sm text-white hover:bg-red-700 disabled:opacity-40"
-          >
-            Clear
-          </button>
-        </aside>
+        <Toolbar
+          selectedTool={selectedTool}
+          setSelectedTool={
+            setSelectedTool
+          }
+          strokeColor={strokeColor}
+          setStrokeColor={
+            setStrokeColor
+          }
+          fillColor={fillColor}
+          setFillColor={
+            setFillColor
+          }
+          strokeWidth={strokeWidth}
+          setStrokeWidth={
+            setStrokeWidth
+          }
+          fontSize={fontSize}
+          setFontSize={setFontSize}
+          historyLength={
+            history.length
+          }
+          redoLength={
+            redoStack.length
+          }
+          hasSelectedElement={
+            selectedElementId !== null
+          }
+          hasElements={
+            elements.length > 0
+          }
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          onDelete={handleDelete}
+          onClear={handleClear}
+        />
 
         {/* CANVAS AREA */}
 
-        <main className="flex min-w-0 flex-1 flex-col items-center gap-3 p-4">
-          <div className="flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 rounded-md border bg-white p-3 shadow-sm">
-            <div className="text-sm text-gray-600">
-              Tool:{" "}
-              <strong className="capitalize">
-                {selectedTool}
-              </strong>
-            </div>
+        <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+          {/* ZOOM CONTROLS */}
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() =>
-                  setZoom((previousZoom) =>
-                    Math.max(0.5, previousZoom - 0.1),
-                  )
-                }
-                className="rounded bg-gray-200 px-3 py-1 hover:bg-gray-300"
-              >
-                −
-              </button>
-
-              <span className="min-w-16 text-center text-sm">
-                {Math.round(zoom * 100)}%
-              </span>
-
-              <button
-                onClick={() =>
-                  setZoom((previousZoom) =>
-                    Math.min(2, previousZoom + 0.1),
-                  )
-                }
-                className="rounded bg-gray-200 px-3 py-1 hover:bg-gray-300"
-              >
-                +
-              </button>
-
-              <button
-                onClick={() => setZoom(1)}
-                className="rounded bg-gray-200 px-3 py-1 text-sm hover:bg-gray-300"
-              >
-                Reset
-              </button>
-            </div>
-
-            {saveMessage && (
-              <span className="text-sm text-green-600">
-                {saveMessage}
-              </span>
-            )}
-          </div>
-
-          <div className="w-full max-w-6xl overflow-auto rounded-lg border bg-white p-3 shadow">
-            <canvas
-              ref={canvasRef}
-              width={CANVAS_WIDTH}
-              height={CANVAS_HEIGHT}
-              onPointerDown={handlePointerDown}
-              onPointerMove={handlePointerMove}
-              onPointerUp={stopDrawing}
-              onPointerCancel={stopDrawing}
-              className="block min-w-[700px] touch-none rounded border border-gray-300 bg-white"
-              style={{
-                width: `${CANVAS_WIDTH * zoom}px`,
-                height: `${CANVAS_HEIGHT * zoom}px`,
-              }}
+          <div className="flex items-center justify-center border-b bg-white p-3">
+            <ZoomControls
+              zoom={zoom}
+              onZoomOut={zoomOut}
+              onZoomIn={zoomIn}
+              onReset={resetZoom}
             />
           </div>
 
-          <p className="text-xs text-gray-500">
-            Shortcuts: V Select, P Pen, R Rectangle, C Circle,
-            L Line, A Arrow, T Text, Ctrl+S Save, Ctrl+Z Undo,
-            Ctrl+Y Redo
-          </p>
+          {/* CANVAS */}
+
+          <div className="min-h-0 flex-1 overflow-auto p-4">
+            <Canvas
+              canvasRef={canvasRef}
+              elements={elements}
+              selectedElementId={
+                selectedElementId
+              }
+              zoom={zoom}
+              onPointerDown={
+                handlePointerDown
+              }
+              onPointerMove={
+                handlePointerMove
+              }
+              onPointerUp={
+                handlePointerUp
+              }
+              onPointerCancel={
+                handlePointerCancel
+              }
+            />
+          </div>
+
+          {/* LOADING */}
+
+          {isLoading && (
+            <div className="pointer-events-none absolute left-1/2 top-20 -translate-x-1/2 rounded-md bg-white px-4 py-2 text-sm shadow">
+              Loading drawing...
+            </div>
+          )}
         </main>
 
-        {/* CHAT SIDEBAR */}
+        {/* CHAT */}
 
-        <aside className="hidden w-80 shrink-0 flex-col border-l bg-white p-4 lg:flex">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">
-              Room Chat
-            </h2>
-
-            <span
-              className={`text-xs ${
-                isChatConnected
-                  ? "text-green-600"
-                  : "text-red-600"
-              }`}
-            >
-              {isChatConnected ? "Online" : "Offline"}
-            </span>
-          </div>
-
-          <div className="flex h-[500px] flex-1 flex-col overflow-y-auto rounded-md bg-gray-100 p-3">
-            {chatMessages.length === 0 ? (
-              <p className="text-sm text-gray-500">
-                No messages yet.
-              </p>
-            ) : (
-              chatMessages.map((chat, index) => (
-                <div
-                  key={`${chat.id ?? chat.chatId ?? "message"}-${index}`}
-                  className="mb-3 rounded-md bg-white p-3 shadow-sm"
-                >
-                  <p className="break-words text-sm text-gray-800">
-                    {chat.message}
-                  </p>
-
-                  <p className="mt-1 text-xs text-gray-400">
-                    {chat.userId}
-                  </p>
-                </div>
-              ))
-            )}
-
-            <div ref={chatBottomRef} />
-          </div>
-
-          <div className="mt-3 flex gap-2">
-            <input
-              ref={chatInputRef}
-              value={chatInput}
-              onChange={(event) =>
-                setChatInput(event.target.value)
-              }
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  sendChatMessage();
-                }
-              }}
-              placeholder="Write a message..."
-              className="min-w-0 flex-1 rounded-md border px-3 py-2 text-sm outline-none focus:border-blue-500"
-            />
-
-            <button
-              onClick={sendChatMessage}
-              disabled={
-                !isChatConnected || !chatInput.trim()
-              }
-              className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Send
-            </button>
-          </div>
-        </aside>
+        <Chat
+          chatMessages={
+            chatMessages
+          }
+          chatInput={chatInput}
+          setChatInput={
+            setChatInput
+          }
+          isChatConnected={
+            isChatConnected
+          }
+          onSendMessage={
+            sendChatMessage
+          }
+        />
       </div>
     </div>
   );

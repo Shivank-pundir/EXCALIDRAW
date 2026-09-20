@@ -48,12 +48,24 @@ export async function handleGetChats(
     orderBy: {
       id: "asc",
     },
+    include: {
+      user: {
+        select: {
+          name: true,
+        },
+      },
+    },
   });
 
   sendMessage(ws, {
     type: "room_chats",
     roomId: cleanRoomId,
-    messages,
+    messages: messages.map((chat) => ({
+      chatId: chat.id,
+      message: chat.message,
+      userId: chat.userId,
+      username: chat.user.name,
+    })),
   });
 }
 
@@ -99,6 +111,13 @@ export async function handleChat(
       message: cleanMessage,
       userId: user.userId,
     },
+    include: {
+      user: {
+        select: {
+          name: true,
+        },
+      },
+    },
   });
 
   broadcastToRoom(
@@ -108,12 +127,13 @@ export async function handleChat(
       roomId: cleanRoomId,
       message: savedChat.message,
       userId: savedChat.userId,
+      username: savedChat.user.name,
       chatId: savedChat.id,
     },
     connectedUsers,
   );
 
   console.log(
-    `Message sent by ${user.userId} in room ${cleanRoomId}`,
+    `Message sent by ${savedChat.user.name} (${user.userId}) in room ${cleanRoomId}`,
   );
 }

@@ -45,12 +45,18 @@ export async function handleJoinRoom(
   }
 
   user.rooms.add(cleanRoomId);
+  console.log(
+  "✅ ROOM JOINED:",
+  user.userId,
+  cleanRoomId,
+  [...user.rooms],
+);
 
   sendMessage(ws, {
-    type: "joined_room",
-    roomId: cleanRoomId,
-    message: `Joined room ${cleanRoomId}`,
-  });
+  type: "joined_room",
+  roomId: cleanRoomId,
+  message: `Joined room ${cleanRoomId}`,
+});
 
   broadcastToRoom(
     cleanRoomId,
