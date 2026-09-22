@@ -122,6 +122,20 @@ export default function RoomPage() {
     }[]
   >([]);
 
+  const [remoteCursors, setRemoteCursors] =
+    useState<
+      Record<
+        string,
+        {
+          x: number;
+          y: number;
+        }
+      >
+    >({});
+
+  const lastCursorSentRef =
+    useRef(0);
+
   // =========================================================
   // CHAT STATE
   // =========================================================
@@ -162,6 +176,50 @@ export default function RoomPage() {
         (event.clientY - rect.top) /
         zoom,
     };
+  };
+
+  // =========================================================
+  // SEND CURSOR POSITION
+  // =========================================================
+
+  const sendCursorPosition = (
+    event: React.PointerEvent<HTMLCanvasElement>,
+  ) => {
+    const socket = wsRef.current;
+
+    if (
+      !socket ||
+      socket.readyState !== WebSocket.OPEN ||
+      !hasJoinedRoomRef.current
+    ) {
+      return;
+    }
+
+    const now = Date.now();
+
+    if (now - lastCursorSentRef.current < 30) {
+      return;
+    }
+
+    lastCursorSentRef.current = now;
+
+    const canvas = canvasRef.current;
+
+    if (!canvas) {
+      return;
+    }
+
+    const rect =
+      canvas.getBoundingClientRect();
+
+    socket.send(
+      JSON.stringify({
+        type: "cursor_move",
+        roomId: slug,
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      }),
+    );
   };
 
   // =========================================================
@@ -743,6 +801,8 @@ export default function RoomPage() {
   const handlePointerMove = (
     event: React.PointerEvent<HTMLCanvasElement>,
   ) => {
+    sendCursorPosition(event);
+
     const point =
       getPoint(event);
 
@@ -1420,8 +1480,39 @@ if (data.type === "user_left") {
 
   toast.success("A user left the room");
 
+  setRemoteCursors((prev) => {
+    const next = { ...prev };
+    delete next[data.userId];
+    return next;
+  });
+
   return;
 }
+        // ---------------------------------------------------
+        // REMOTE CURSOR
+        // ---------------------------------------------------
+
+        if (data.type === "cursor_move") {
+          if (
+            data.roomId !== slug ||
+            typeof data.userId !== "string" ||
+            typeof data.x !== "number" ||
+            typeof data.y !== "number"
+          ) {
+            return;
+          }
+
+          setRemoteCursors((prev) => ({
+            ...prev,
+            [data.userId]: {
+              x: data.x,
+              y: data.y,
+            },
+          }));
+
+          return;
+        }
+
         // ---------------------------------------------------
         // DRAWING
         // ---------------------------------------------------
@@ -1541,6 +1632,7 @@ if (data.type === "user_left") {
 
       setIsConnected(false);
       setIsChatConnected(false);
+      setRemoteCursors({});
 
       hasJoinedRoomRef.current =
         false;
@@ -1549,6 +1641,7 @@ if (data.type === "user_left") {
     return () => {
       hasJoinedRoomRef.current =
         false;
+      setRemoteCursors({});
 
       if (
         socket.readyState ===
@@ -1885,26 +1978,67 @@ if (data.type === "user_left") {
           {/* CANVAS */}
 
           <div className="min-h-0 flex-1 overflow-auto p-4">
-            <Canvas
-              canvasRef={canvasRef}
-              elements={elements}
-              selectedElementId={
-                selectedElementId
-              }
-              zoom={zoom}
-              onPointerDown={
-                handlePointerDown
-              }
-              onPointerMove={
-                handlePointerMove
-              }
-              onPointerUp={
-                handlePointerUp
-              }
-              onPointerCancel={
-                handlePointerCancel
-              }
-            />
+            <div className="relative inline-block">
+              <Canvas
+                canvasRef={canvasRef}
+                elements={elements}
+                selectedElementId={
+                  selectedElementId
+                }
+                zoom={zoom}
+                onPointerDown={
+                  handlePointerDown
+                }
+                onPointerMove={
+                  handlePointerMove
+                }
+                onPointerUp={
+                  handlePointerUp
+                }
+                onPointerCancel={
+                  handlePointerCancel
+                }
+              />
+
+              {Object.entries(remoteCursors).map(
+                ([userId, cursor]) => {
+                  const user =
+                    roomUsers.find(
+                      (roomUser) =>
+                        roomUser.userId ===
+                        userId,
+                    );
+
+                  return (
+                    <div
+                      key={userId}
+                      className="pointer-events-none absolute z-30"
+                      style={{
+                        left: cursor.x,
+                        top: cursor.y,
+                      }}
+                    >
+                      <div className="relative">
+                        <div
+                          className="h-0 w-0"
+                          style={{
+                            borderTop:
+                              "10px solid #111827",
+                            borderRight:
+                              "7px solid transparent",
+                          }}
+                        />
+
+                        <div className="absolute left-2 top-2 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs font-medium text-white shadow">
+                          {user?.name ??
+                            "User"}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                },
+              )}
+            </div>
           </div>
 
           {/* LOADING */}

@@ -3,6 +3,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import { handleJoinRoom, handleLeaveRoom } from "./handlers/room";
 import { handleGetChats, handleChat } from "./handlers/chat";
 import { handleDrawing } from "./handlers/drawing";
+import { handleCursorMove } from "./handlers/cursor";
 
 import {
   getUserFromSocket,
@@ -60,6 +61,14 @@ function isIncomingMessage(
     return (
       typeof data.roomId === "string" &&
       Array.isArray(data.elements)
+    );
+  }
+
+  if (data.type === "cursor_move") {
+    return (
+      typeof data.roomId === "string" &&
+      typeof data.x === "number" &&
+      typeof data.y === "number"
     );
   }
 
@@ -182,6 +191,18 @@ wss.on("connection", (ws, request) => {
             currentUser,
             parsedData.roomId,
             parsedData.elements,
+            connectedUsers,
+          );
+          break;
+        }
+
+        case "cursor_move": {
+          handleCursorMove(
+            ws,
+            currentUser,
+            parsedData.roomId,
+            parsedData.x,
+            parsedData.y,
             connectedUsers,
           );
           break;

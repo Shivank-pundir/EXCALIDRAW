@@ -43,9 +43,17 @@ export type DrawingMessage = {
   elements: unknown[];
 };
 
+export type CursorMoveMessage = {
+  type: "cursor_move";
+  roomId: string;
+  x: number;
+  y: number;
+};
+
 export type IncomingMessage =
   | JoinRoomMessage
   | LeaveRoomMessage
   | ChatMessage
   | GetChatsMessage
-  | DrawingMessage;
+  | DrawingMessage
+  | CursorMoveMessage;

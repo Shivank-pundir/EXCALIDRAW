@@ -86,6 +86,10 @@ type CanvasProps = {
 
   zoom: number;
 
+  onCursorMove: (
+    event: React.PointerEvent<HTMLCanvasElement>,
+  ) => void;
+
   onPointerDown: (
     event: React.PointerEvent<HTMLCanvasElement>,
   ) => void;
@@ -108,6 +112,7 @@ export default function Canvas({
   elements,
   selectedElementId,
   zoom,
+  onCursorMove,
   onPointerDown,
   onPointerMove,
   onPointerUp,
@@ -358,11 +363,8 @@ export default function Canvas({
           element.type === "line" ||
           element.type === "arrow"
         ) {
-          const start =
-            element.start;
-
-          const end =
-            element.end;
+          const start = element.start;
+          const end = element.end;
 
           const minX = Math.min(
             start.x,
@@ -374,11 +376,13 @@ export default function Canvas({
             end.y,
           );
 
-          const width =
-            Math.abs(end.x - start.x);
+          const width = Math.abs(
+            end.x - start.x,
+          );
 
-          const height =
-            Math.abs(end.y - start.y);
+          const height = Math.abs(
+            end.y - start.y,
+          );
 
           context.strokeRect(
             minX - 5,
@@ -405,8 +409,7 @@ export default function Canvas({
         }
 
         if (element.type === "pen") {
-          const points =
-            element.points;
+          const points = element.points;
 
           if (points.length > 0) {
             const xs = points.map(
@@ -456,7 +459,10 @@ export default function Canvas({
         }}
         className="block cursor-crosshair shadow-md"
         onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
+        onPointerMove={(event) => {
+          onPointerMove(event);
+          onCursorMove(event);
+        }}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
       />

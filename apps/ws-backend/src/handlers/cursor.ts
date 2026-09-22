@@ -1,60 +1,40 @@
-import WebSocket from "ws";
+import { WebSocket } from "ws";
 
-import type {
-  ConnectedUser,
-  CursorMessage,
-} from "../types/message";
-
+import { ConnectedUser } from "../types/message";
 import { broadcastToRoom } from "../utils/webSocket";
 
-export function handleCursor(
+export function handleCursorMove(
   ws: WebSocket,
-  message: CursorMessage,
+  user: ConnectedUser,
+  roomId: string,
+  x: number,
+  y: number,
   connectedUsers: Map<WebSocket, ConnectedUser>,
-) {
-  const user = connectedUsers.get(ws);
+): void {
+  const cleanRoomId = roomId.trim();
 
-  console.log("🖱️ CURSOR RECEIVED:", message);
-
-  if (!user) {
-    console.log("❌ Cursor user not found");
+  if (!cleanRoomId) {
     return;
   }
 
-  const roomId = message.roomId.trim();
-
-  if (!roomId) {
-    console.log("❌ Cursor roomId is empty");
+  // Only users who are actually inside the room
+  // are allowed to broadcast cursor positions.
+  if (!user.rooms.has(cleanRoomId)) {
     return;
   }
 
-  if (!user.rooms.has(roomId)) {
-  console.log(
-    "❌ Cursor ignored - user is not inside room:",
-    roomId,
-    "Current rooms:",
-    [...user.rooms],
-  );
-
-  return;
-}
-
-  console.log("📡 BROADCASTING CURSOR:", {
-    roomId,
-    userId: user.userId,
-    x: message.x,
-    y: message.y,
-  });
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return;
+  }
 
   broadcastToRoom(
-    roomId,
+    cleanRoomId,
     {
-      type: "cursor",
-      roomId,
+      type: "cursor_move",
+      roomId: cleanRoomId,
       userId: user.userId,
-      userName: user.userName,
-      x: message.x,
-      y: message.y,
+      x,
+      y,
     },
     connectedUsers,
     ws,
