@@ -7,7 +7,7 @@ import bcrypt from "bcrypt";
 import cors from "cors";
 import { randomUUID } from "node:crypto";
 
-import { prisma } from "@repo/db-stable";
+import { prisma, Prisma } from "@repo/db-stable";
 import { jwt_secret } from "@repo/backend-common/config";
 import { siginSchema } from "@repo/common/types";
 
@@ -15,7 +15,7 @@ import { middleware } from "./middleware";
 
 const app = express();
 
-/* ----------------------------- CONFIG ----------------------------- */
+/*  CONFIG  */
 
 const PORT = 4000;
 
@@ -26,7 +26,7 @@ const FRONTEND_ORIGINS = [
   "http://127.0.0.1:3001",
 ];
 
-/* ----------------------------- MIDDLEWARE ----------------------------- */
+/*  MIDDLEWARE  */
 
 app.use(
   cors({
@@ -38,7 +38,7 @@ app.use(
 
 app.use(express.json());
 
-/* ----------------------------- HELPERS ----------------------------- */
+/*  HELPERS  */
 
 function createRoomSlug(name: string): string {
   return name
@@ -62,7 +62,7 @@ function isValidObject(value: unknown): value is Record<string, unknown> {
   );
 }
 
-/* ----------------------------- SIGNUP ----------------------------- */
+/*  SIGNUP  */
 
 app.post("/signup", async (req: Request, res: Response) => {
   try {
@@ -142,7 +142,7 @@ app.post("/signup", async (req: Request, res: Response) => {
   }
 });
 
-/* ----------------------------- SIGNIN ----------------------------- */
+/* SIGNIN  */
 
 app.post("/signin", async (req: Request, res: Response) => {
   const parsedData = siginSchema.safeParse(req.body);
@@ -208,7 +208,7 @@ app.post("/signin", async (req: Request, res: Response) => {
   }
 });
 
-/* ----------------------------- CREATE ROOM ----------------------------- */
+/* CREATE ROOM */
 
 app.post(
   "/room",
@@ -284,7 +284,7 @@ app.post(
   },
 );
 
-/* ----------------------------- GET MY ROOMS ----------------------------- */
+/* GET MY ROOMS */
 
 app.get(
   "/rooms",
@@ -373,7 +373,7 @@ app.get(
   },
 );
 
-/* ----------------------------- GET ROOM CHATS ----------------------------- */
+/* GET ROOM CHATS  */
 
 app.get(
   "/chats/:roomId",
@@ -437,7 +437,7 @@ app.get(
   },
 );
 
-/* ----------------------------- GET ROOM DRAWING ----------------------------- */
+// GET ROOM DRAWING 
 
 app.get(
   "/drawing/:roomId",
@@ -492,7 +492,7 @@ app.get(
   },
 );
 
-/* ----------------------------- SAVE/UPDATE DRAWING ----------------------------- */
+// /SAVE/UPDATE DRAWING  
 
 app.put(
   "/drawing/:roomId",
@@ -500,8 +500,7 @@ app.put(
   async (req: Request, res: Response) => {
     try {
       const receivedRoomId = req.params.roomId;
-      const drawingData = req.body;
-
+const drawingData: Prisma.InputJsonValue = req.body;
       if (
         typeof receivedRoomId !== "string" ||
         receivedRoomId.trim().length === 0
@@ -571,7 +570,7 @@ app.put(
   },
 );
 
-/* ----------------------------- DELETE ROOM DRAWING ----------------------------- */
+// DELETE ROOM DRAWING 
 
 app.delete(
   "/drawing/:roomId",
@@ -634,13 +633,6 @@ app.delete(
   },
 );
 
-/* ----------------------------- HEALTH CHECK ----------------------------- */
-
-app.get("/", (_req: Request, res: Response) => {
-  return res.status(200).json({
-    message: "HTTP backend is running",
-  });
-});
 
 /* ----------------------------- SERVER ----------------------------- */
 

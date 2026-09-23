@@ -54,20 +54,21 @@ export default function RoomPage() {
   setElementsRef.current =
     drawing.setElements;
 
-  const {
-    wsRef,
-    hasJoinedRoomRef,
-    skipDrawingBroadcastRef,
-    isConnected,
-    roomUsers,
-    remoteCursors,
-    chatMessages,
-    chatInput,
-    setChatInput,
-    isChatConnected,
-    sendCursorPosition,
-    sendChatMessage,
-  } = roomSocket;
+ const {
+  wsRef,
+  hasJoinedRoomRef,
+  skipDrawingBroadcastRef,
+  isConnected,
+  roomUsers,
+  remoteCursors,
+  chatMessages,
+  chatInput,
+  setChatInput,
+  isChatConnected,
+  currentUserId,
+  sendCursorPosition,
+  sendChatMessage,
+} = roomSocket;
 
   const {
     canvasRef,
@@ -496,18 +497,14 @@ export default function RoomPage() {
         {/* Chat is visible only when
             there is more than one user. */}
         
-          <Chat
-            chatMessages={chatMessages}
-            chatInput={chatInput}
-            // currentUserId={currentUserId}
-            setChatInput={setChatInput}
-            isChatConnected={
-              isChatConnected
-            }
-            onSendMessage={
-              sendChatMessage
-            }
-          />
+         <Chat
+  chatMessages={chatMessages}
+  chatInput={chatInput}
+  currentUserId={currentUserId}
+  setChatInput={setChatInput}
+  isChatConnected={isChatConnected}
+  onSendMessage={sendChatMessage}
+/>
         
       </div>
     </div>

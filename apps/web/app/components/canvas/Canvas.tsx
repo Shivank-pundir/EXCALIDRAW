@@ -1,9 +1,18 @@
+
 "use client";
 
-import { useEffect, type RefObject } from "react";
+import {
+  useEffect,
+  useState,
+  type RefObject,
+} from "react";
 
 export const CANVAS_WIDTH = 1200;
 export const CANVAS_HEIGHT = 700;
+
+const CANVAS_BOTTOM_PADDING = 300;
+const CANVAS_EXPAND_THRESHOLD = 150;
+const CANVAS_EXPAND_STEP = 500;
 
 export type Point = {
   x: number;
@@ -113,6 +122,88 @@ export default function Canvas({
   onPointerUp,
   onPointerCancel,
 }: CanvasProps) {
+  const [canvasHeight, setCanvasHeight] =
+    useState(CANVAS_HEIGHT);
+
+  /*
+   * Automatically expand the canvas when
+   * drawings get close to the bottom.
+   */
+  useEffect(() => {
+    if (elements.length === 0) return;
+
+    let lowestPoint = 0;
+
+    elements.forEach((element) => {
+      if (element.type === "pen") {
+        element.points.forEach((point) => {
+          lowestPoint = Math.max(
+            lowestPoint,
+            point.y,
+          );
+        });
+      }
+
+      if (element.type === "rectangle") {
+        lowestPoint = Math.max(
+          lowestPoint,
+          element.y + element.height,
+        );
+      }
+
+      if (element.type === "circle") {
+        lowestPoint = Math.max(
+          lowestPoint,
+          element.y +
+            Math.abs(element.radiusY),
+        );
+      }
+
+      if (
+        element.type === "line" ||
+        element.type === "arrow"
+      ) {
+        lowestPoint = Math.max(
+          lowestPoint,
+          element.start.y,
+          element.end.y,
+        );
+      }
+
+      if (element.type === "text") {
+        lowestPoint = Math.max(
+          lowestPoint,
+          element.y,
+        );
+      }
+    });
+
+    /*
+     * If the drawing gets close to the bottom,
+     * add more space.
+     */
+    if (
+      lowestPoint >
+      canvasHeight - CANVAS_EXPAND_THRESHOLD
+    ) {
+      setCanvasHeight((currentHeight) => {
+        let newHeight = currentHeight;
+
+        while (
+          lowestPoint >
+          newHeight - CANVAS_EXPAND_THRESHOLD
+        ) {
+          newHeight += CANVAS_EXPAND_STEP;
+        }
+
+        return newHeight;
+      });
+    }
+  }, [elements, canvasHeight]);
+
+  /*
+   * Redraw canvas whenever drawing state changes.
+   */
   useEffect(() => {
     const canvas = canvasRef.current;
 
@@ -126,48 +217,77 @@ export default function Canvas({
       0,
       0,
       CANVAS_WIDTH,
-      CANVAS_HEIGHT,
+      canvasHeight,
     );
 
     elements.forEach((element) => {
       context.save();
 
-      context.strokeStyle = element.strokeColor;
-      context.lineWidth = element.strokeWidth;
+      context.strokeStyle =
+        element.strokeColor;
+
+      context.lineWidth =
+        element.strokeWidth;
+
       context.lineCap = "round";
       context.lineJoin = "round";
 
-      if (element.fillColor !== "transparent") {
-        context.fillStyle = element.fillColor;
+      if (
+        element.fillColor !== "transparent"
+      ) {
+        context.fillStyle =
+          element.fillColor;
       }
 
+      /*
+       * PEN
+       */
       if (element.type === "pen") {
         if (element.points.length < 2) {
           context.restore();
           return;
         }
 
+        
         context.beginPath();
 
-        context.moveTo(
-          element.points[0].x,
-          element.points[0].y,
-        );
+      const firstPoint = element.points[0];
 
-        for (
-          let i = 1;
-          i < element.points.length;
-          i++
-        ) {
-          context.lineTo(
-            element.points[i].x,
-            element.points[i].y,
-          );
-        }
+if (!firstPoint) {
+  context.restore();
+  return;
+}
+
+context.beginPath();
+
+context.moveTo(
+  firstPoint.x,
+  firstPoint.y,
+);
+
+for (
+  let i = 1;
+  i < element.points.length;
+  i++
+) {
+  const point = element.points[i];
+
+  if (!point) continue;
+
+  context.lineTo(
+    point.x,
+    point.y,
+  );
+}
+
+context.stroke();
 
         context.stroke();
       }
 
+      /*
+       * RECTANGLE
+       */
       if (element.type === "rectangle") {
         context.beginPath();
 
@@ -179,7 +299,8 @@ export default function Canvas({
         );
 
         if (
-          element.fillColor !== "transparent"
+          element.fillColor !==
+          "transparent"
         ) {
           context.fill();
         }
@@ -187,6 +308,9 @@ export default function Canvas({
         context.stroke();
       }
 
+      /*
+       * CIRCLE
+       */
       if (element.type === "circle") {
         context.beginPath();
 
@@ -212,7 +336,8 @@ export default function Canvas({
         );
 
         if (
-          element.fillColor !== "transparent"
+          element.fillColor !==
+          "transparent"
         ) {
           context.fill();
         }
@@ -220,6 +345,9 @@ export default function Canvas({
         context.stroke();
       }
 
+      /*
+       * LINE
+       */
       if (element.type === "line") {
         context.beginPath();
 
@@ -236,6 +364,9 @@ export default function Canvas({
         context.stroke();
       }
 
+      /*
+       * ARROW
+       */
       if (element.type === "arrow") {
         const startX = element.start.x;
         const startY = element.start.y;
@@ -293,6 +424,9 @@ export default function Canvas({
         context.stroke();
       }
 
+      /*
+       * TEXT
+       */
       if (element.type === "text") {
         context.font = `${element.fontSize}px sans-serif`;
 
@@ -306,6 +440,9 @@ export default function Canvas({
         );
       }
 
+      /*
+       * SELECTED ELEMENT
+       */
       if (
         selectedElementId === element.id
       ) {
@@ -315,6 +452,9 @@ export default function Canvas({
         context.lineWidth = 1;
         context.setLineDash([6, 4]);
 
+        /*
+         * Rectangle selection
+         */
         if (element.type === "rectangle") {
           context.strokeRect(
             element.x - 5,
@@ -324,6 +464,9 @@ export default function Canvas({
           );
         }
 
+        /*
+         * Circle selection
+         */
         if (element.type === "circle") {
           context.beginPath();
 
@@ -344,6 +487,9 @@ export default function Canvas({
           context.stroke();
         }
 
+        /*
+         * Line / Arrow selection
+         */
         if (
           element.type === "line" ||
           element.type === "arrow"
@@ -377,6 +523,9 @@ export default function Canvas({
           );
         }
 
+        /*
+         * Text selection
+         */
         if (element.type === "text") {
           const textWidth =
             context.measureText(
@@ -393,6 +542,9 @@ export default function Canvas({
           );
         }
 
+        /*
+         * Pen selection
+         */
         if (element.type === "pen") {
           const points = element.points;
 
@@ -431,6 +583,7 @@ export default function Canvas({
     selectedElementId,
     zoom,
     canvasBackground,
+    canvasHeight,
   ]);
 
   return (
@@ -438,10 +591,10 @@ export default function Canvas({
       <canvas
         ref={canvasRef}
         width={CANVAS_WIDTH}
-        height={CANVAS_HEIGHT}
+        height={canvasHeight}
         style={{
           width: `${CANVAS_WIDTH * zoom}px`,
-          height: `${CANVAS_HEIGHT * zoom}px`,
+          height: `${canvasHeight * zoom}px`,
           backgroundColor:
             canvasBackground,
         }}
@@ -454,3 +607,4 @@ export default function Canvas({
     </div>
   );
 }
+

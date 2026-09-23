@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 const currentFile = fileURLToPath(import.meta.url);
@@ -32,6 +32,7 @@ if (!connectionString) {
 const adapter = new PrismaPg({
   connectionString,
 });
+export { Prisma };
 
 export const prisma = new PrismaClient({
   adapter,
