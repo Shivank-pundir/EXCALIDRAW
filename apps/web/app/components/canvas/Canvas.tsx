@@ -79,16 +79,11 @@ export type DrawingElement =
 
 type CanvasProps = {
   canvasRef: RefObject<HTMLCanvasElement | null>;
-
   elements: DrawingElement[];
-
   selectedElementId: string | null;
-
   zoom: number;
 
-  onCursorMove: (
-    event: React.PointerEvent<HTMLCanvasElement>,
-  ) => void;
+  canvasBackground: "white" | "black";
 
   onPointerDown: (
     event: React.PointerEvent<HTMLCanvasElement>,
@@ -112,7 +107,7 @@ export default function Canvas({
   elements,
   selectedElementId,
   zoom,
-  onCursorMove,
+  canvasBackground,
   onPointerDown,
   onPointerMove,
   onPointerUp,
@@ -121,20 +116,12 @@ export default function Canvas({
   useEffect(() => {
     const canvas = canvasRef.current;
 
-    if (!canvas) {
-      return;
-    }
+    if (!canvas) return;
 
     const context = canvas.getContext("2d");
 
-    if (!context) {
-      return;
-    }
+    if (!context) return;
 
-    /*
-     * Clear the complete canvas before rendering
-     * the latest elements.
-     */
     context.clearRect(
       0,
       0,
@@ -142,9 +129,6 @@ export default function Canvas({
       CANVAS_HEIGHT,
     );
 
-    /*
-     * Render every drawing element.
-     */
     elements.forEach((element) => {
       context.save();
 
@@ -153,16 +137,10 @@ export default function Canvas({
       context.lineCap = "round";
       context.lineJoin = "round";
 
-      /*
-       * Fill color
-       */
       if (element.fillColor !== "transparent") {
         context.fillStyle = element.fillColor;
       }
 
-      /*
-       * Pen
-       */
       if (element.type === "pen") {
         if (element.points.length < 2) {
           context.restore();
@@ -176,7 +154,11 @@ export default function Canvas({
           element.points[0].y,
         );
 
-        for (let i = 1; i < element.points.length; i++) {
+        for (
+          let i = 1;
+          i < element.points.length;
+          i++
+        ) {
           context.lineTo(
             element.points[i].x,
             element.points[i].y,
@@ -186,9 +168,6 @@ export default function Canvas({
         context.stroke();
       }
 
-      /*
-       * Rectangle
-       */
       if (element.type === "rectangle") {
         context.beginPath();
 
@@ -199,24 +178,28 @@ export default function Canvas({
           element.height,
         );
 
-        if (element.fillColor !== "transparent") {
+        if (
+          element.fillColor !== "transparent"
+        ) {
           context.fill();
         }
 
         context.stroke();
       }
 
-      /*
-       * Circle / ellipse
-       */
       if (element.type === "circle") {
         context.beginPath();
 
         const centerX = element.x;
         const centerY = element.y;
 
-        const radiusX = Math.abs(element.radiusX);
-        const radiusY = Math.abs(element.radiusY);
+        const radiusX = Math.abs(
+          element.radiusX,
+        );
+
+        const radiusY = Math.abs(
+          element.radiusY,
+        );
 
         context.ellipse(
           centerX,
@@ -228,16 +211,15 @@ export default function Canvas({
           Math.PI * 2,
         );
 
-        if (element.fillColor !== "transparent") {
+        if (
+          element.fillColor !== "transparent"
+        ) {
           context.fill();
         }
 
         context.stroke();
       }
 
-      /*
-       * Line
-       */
       if (element.type === "line") {
         context.beginPath();
 
@@ -254,9 +236,6 @@ export default function Canvas({
         context.stroke();
       }
 
-      /*
-       * Arrow
-       */
       if (element.type === "arrow") {
         const startX = element.start.x;
         const startY = element.start.y;
@@ -271,16 +250,12 @@ export default function Canvas({
 
         context.stroke();
 
-        /*
-         * Arrow head
-         */
         const angle = Math.atan2(
           endY - startY,
           endX - startX,
         );
 
         const arrowLength = 12;
-
         const arrowAngle = Math.PI / 6;
 
         context.beginPath();
@@ -290,10 +265,14 @@ export default function Canvas({
         context.lineTo(
           endX -
             arrowLength *
-              Math.cos(angle - arrowAngle),
+              Math.cos(
+                angle - arrowAngle,
+              ),
           endY -
             arrowLength *
-              Math.sin(angle - arrowAngle),
+              Math.sin(
+                angle - arrowAngle,
+              ),
         );
 
         context.moveTo(endX, endY);
@@ -301,21 +280,24 @@ export default function Canvas({
         context.lineTo(
           endX -
             arrowLength *
-              Math.cos(angle + arrowAngle),
+              Math.cos(
+                angle + arrowAngle,
+              ),
           endY -
             arrowLength *
-              Math.sin(angle + arrowAngle),
+              Math.sin(
+                angle + arrowAngle,
+              ),
         );
 
         context.stroke();
       }
 
-      /*
-       * Text
-       */
       if (element.type === "text") {
         context.font = `${element.fontSize}px sans-serif`;
-        context.fillStyle = element.strokeColor;
+
+        context.fillStyle =
+          element.strokeColor;
 
         context.fillText(
           element.text,
@@ -324,10 +306,9 @@ export default function Canvas({
         );
       }
 
-      /*
-       * Selected element
-       */
-      if (selectedElementId === element.id) {
+      if (
+        selectedElementId === element.id
+      ) {
         context.save();
 
         context.strokeStyle = "#2563eb";
@@ -349,8 +330,12 @@ export default function Canvas({
           context.ellipse(
             element.x,
             element.y,
-            Math.abs(element.radiusX) + 5,
-            Math.abs(element.radiusY) + 5,
+            Math.abs(
+              element.radiusX,
+            ) + 5,
+            Math.abs(
+              element.radiusY,
+            ) + 5,
             0,
             0,
             Math.PI * 2,
@@ -422,6 +407,7 @@ export default function Canvas({
 
             const minX = Math.min(...xs);
             const maxX = Math.max(...xs);
+
             const minY = Math.min(...ys);
             const maxY = Math.max(...ys);
 
@@ -444,6 +430,7 @@ export default function Canvas({
     elements,
     selectedElementId,
     zoom,
+    canvasBackground,
   ]);
 
   return (
@@ -455,14 +442,12 @@ export default function Canvas({
         style={{
           width: `${CANVAS_WIDTH * zoom}px`,
           height: `${CANVAS_HEIGHT * zoom}px`,
-          backgroundColor: "white",
+          backgroundColor:
+            canvasBackground,
         }}
         className="block cursor-crosshair shadow-md"
         onPointerDown={onPointerDown}
-        onPointerMove={(event) => {
-          onPointerMove(event);
-          onCursorMove(event);
-        }}
+        onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
       />

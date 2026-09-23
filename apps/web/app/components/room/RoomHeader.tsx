@@ -1,4 +1,3 @@
-
 "use client";
 
 type RoomHeaderProps = {
@@ -24,9 +23,23 @@ export default function RoomHeader({
   return (
     <nav className="flex flex-wrap items-center justify-between gap-3 bg-gray-900 px-5 py-4 text-white">
       {/* App Name */}
-      <h1 className="text-xl font-bold">
-        Excalidraw Clone
-      </h1>
+      <div className="flex items-center gap-2">
+        {/* Logo */}
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-lg font-bold text-gray-900 shadow-sm">
+          ✦
+        </div>
+
+        {/* App Name */}
+        <div>
+          <div className="text-sm font-bold text-white">
+            Sketchly
+          </div>
+
+          <div className="text-[10px] text-gray-400">
+            Collaborative Whiteboard
+          </div>
+        </div>
+      </div>
 
       <div className="flex items-center gap-4 text-sm">
         {/* Room Name */}
@@ -47,9 +60,7 @@ export default function RoomHeader({
                 className="group relative"
               >
                 {/* Avatar */}
-                <div
-                  className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-2 border-gray-900 bg-blue-500 text-xs font-bold text-white"
-                >
+                <div className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-2 border-gray-900 bg-blue-500 text-xs font-bold text-white">
                   {user.name.charAt(0).toUpperCase()}
                 </div>
 
@@ -93,4 +104,3 @@ export default function RoomHeader({
     </nav>
   );
 }
-
