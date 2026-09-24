@@ -17,7 +17,7 @@ const app = express();
 
 /*  CONFIG  */
 
-const PORT = 4000;
+const PORT = Number(process.env.PORT) || 4000;
 
 const FRONTEND_ORIGINS = [
   "http://localhost:3000",
@@ -634,7 +634,7 @@ app.delete(
 );
 
 
-/* ----------------------------- SERVER ----------------------------- */
+/*SERVER */
 
 app.listen(PORT, () => {
   console.log(`HTTP server running on port ${PORT}`);

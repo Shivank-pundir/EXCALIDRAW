@@ -19,7 +19,7 @@ import {
   IncomingMessage,
 } from "./types/message";
 
-const PORT = 8080;
+const PORT = Number(process.env.PORT) || 8080;
 
 const connectedUsers = new Map<WebSocket, ConnectedUser>();
 
