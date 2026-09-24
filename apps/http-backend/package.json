@@ -11,7 +11,7 @@
   "dependencies": {
     "@repo/backend-common": "workspace:*",
     "@repo/common": "workspace:*",
-    "@repo/db": "workspace:*",
+
     "@repo/db-stable": "workspace:*",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
