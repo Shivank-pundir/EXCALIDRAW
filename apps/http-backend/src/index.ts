@@ -22,9 +22,10 @@ const PORT = Number(process.env.PORT) || 4000;
 
 const FRONTEND_ORIGINS = [
   "http://localhost:3000",
-  "http://localhost:3001",
   "http://127.0.0.1:3000",
+  "http://localhost:3001",
   "http://127.0.0.1:3001",
+  "https://sketchly-project-one.vercel.app",
 ];
 
 /*  MIDDLEWARE  */
