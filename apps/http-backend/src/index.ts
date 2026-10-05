@@ -6,6 +6,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import cors from "cors";
 import { randomUUID } from "node:crypto";
+import "dotenv/config";
 
 import { prisma, Prisma } from "@repo/db-stable";
 import { jwt_secret } from "@repo/backend-common/config";

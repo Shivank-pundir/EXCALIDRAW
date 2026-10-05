@@ -11,11 +11,12 @@ import {
 
 import type {
   DrawingElement,
-  Point,
+  Point,  
   Tool,
 } from "../components/canvas/Canvas";
 
-const HTTP_BACKEND_URL = "http://localhost:4000";
+import { HTTP_BACKEND_URL } from "@/lib/config";
+
 
 type TextEditorState = {
   x: number;

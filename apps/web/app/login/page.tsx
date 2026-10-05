@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { Caveat, Inter } from "next/font/google";
+import { HTTP_BACKEND_URL } from "@/lib/config";
 
 const caveat = Caveat({
   subsets: ["latin"],
@@ -44,7 +45,7 @@ export default function LoginPage() {
       setLoading(true);
 
       const response = await axios.post(
-        "http://127.0.0.1:4000/signin",
+        `${HTTP_BACKEND_URL}/signin`,
         {
           username,
           password,

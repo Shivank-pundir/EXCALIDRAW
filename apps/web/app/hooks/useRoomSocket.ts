@@ -7,10 +7,11 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { toast } from "react-hot-toast";
+import { WS_BACKEND_URL } from "@/lib/config";
 import type { DrawingElement } from "../components/canvas/Canvas";
 import type { ChatMessage } from "../components/chat/Chat";
 
-const WS_BACKEND_URL = "ws://localhost:8080";
+
 
 type RoomUser = {
   userId: string;

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { Caveat, Inter } from "next/font/google";
+import { HTTP_BACKEND_URL } from "@/lib/config";
 
 const caveat = Caveat({ subsets: ["latin"], weight: ["600", "700"], variable: "--font-caveat" });
 const inter = Inter({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-inter" });
@@ -41,7 +42,7 @@ export default function SignupPage() {
       setLoading(true);
 
       const response = await axios.post(
-        "http://127.0.0.1:4000/signup",
+        `${HTTP_BACKEND_URL}/signup`,
         {
           name,
           username,

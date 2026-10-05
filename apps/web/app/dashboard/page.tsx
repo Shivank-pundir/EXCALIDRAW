@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import axios from "axios";
 import { Caveat, Inter } from "next/font/google";
 import { toast } from "sonner";
+import { HTTP_BACKEND_URL } from "@/lib/config";
 
 const caveat = Caveat({
   subsets: ["latin"],
@@ -75,14 +76,14 @@ export default function DashboardPage() {
     // the source of truth for "which rooms does THIS user own".
     async function fetchRooms() {
       try {
-        const response = await axios.get(
-          "http://127.0.0.1:4000/rooms",
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          },
-        );
+      const response = await axios.get(
+  `${HTTP_BACKEND_URL}/rooms`,
+  {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  },
+);
 
         setRooms(response.data.rooms ?? []);
       } catch (error) {
@@ -125,18 +126,14 @@ export default function DashboardPage() {
         return;
       }
 
-      const response = await axios.post(
-        "http://127.0.0.1:4000/room",
-        {
-          name: cleanRoomName,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      );
-
+     const response = await axios.get(
+  `${HTTP_BACKEND_URL}/room`,
+  {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  },
+);
       // Backend returns { slug, name, adminId } once the /room
       // route saves `name` on the Room model. If your Prisma
       // schema doesn't have that column yet, response.data.room.name
@@ -201,14 +198,14 @@ export default function DashboardPage() {
         return;
       }
 
-      const response = await axios.get(
-        `http://127.0.0.1:4000/room/${encodeURIComponent(cleanRoomId)}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      );
+     const response = await axios.get(
+  `${HTTP_BACKEND_URL}/room/${encodeURIComponent(cleanRoomId)}`,
+  {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  },
+);
 
       const joinedRoom: Room = {
         slug: response.data.room.slug,
