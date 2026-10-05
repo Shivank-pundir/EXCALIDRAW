@@ -126,11 +126,13 @@ export default function DashboardPage() {
         return;
       }
 
-     const response = await axios.get(
+ const response = await axios.post(
   `${HTTP_BACKEND_URL}/room`,
+  { name: cleanRoomName },
   {
     headers: {
       Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
   },
 );
