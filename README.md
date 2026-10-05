@@ -1,159 +1,455 @@
-# Turborepo starter
+🎨 Sketchly — Real-Time Collaborative Whiteboard
 
-This Turborepo starter is maintained by the Turborepo core team.
+Sketchly is a full-stack, real-time collaborative whiteboard application inspired by tools like Excalidraw. It allows users to create rooms, draw together in real time, see other users' cursors, and communicate through room-based chat.
 
-## Using this example
+The project is built as a Turborepo monorepo with a Next.js frontend, Express REST API, WebSocket server, Prisma, and PostgreSQL.
 
-Run the following command:
+🚀 Live Demo
 
-```sh
-npx create-turbo@latest
-```
+Frontend:
+https://sketchly-project-one.vercel.app
 
-## What's inside?
+GitHub:
+https://github.com/Shivank-pundir/EXCALIDRAW
 
-This Turborepo includes the following packages/apps:
+✨ Features -----
 
-### Apps and Packages
+🔐 Authentication
+User signup and login
+JWT-based authentication
+Protected backend routes
+Persistent authentication using local storage
+Password hashing with bcrypt
+🎨 Collaborative Drawing
+Real-time drawing with WebSockets
+Freehand pen
+Rectangle
+Circle
+Line
+Arrow
+Text
+Eraser
+Custom stroke color
+Custom fill color
+Adjustable stroke width
+Adjustable font size
+Zoom support
+Undo/redo
+Drawing persistence
+👥 Real-Time Collaboration
+Create and join rooms
+Multiple users can work in the same room
+See currently connected users
+Live cursor synchronization
+Display user initials/name near their cursor
+Real-time drawing synchronization
+💬 Room Chat
+Real-time room-based chat
+Messages synchronized through WebSockets
+User-specific chat messages
+💾 Persistent Data
+PostgreSQL database
+Prisma ORM
+Persistent rooms
+Persistent drawings
+Persistent chat data
+📱 Responsive UI
+Dashboard for managing rooms
+Room-based collaborative workspace
+Responsive interface
+Modern whiteboard-style UI
+🛠️ Tech Stack
+Frontend
+Next.js
+React
+TypeScript
+Tailwind CSS
+Axios
+WebSocket
+Backend
+Node.js
+Express.js
+TypeScript
+WebSocket (ws)
+JWT
+bcrypt
+Database
+PostgreSQL
+Neon PostgreSQL
+Prisma ORM
+Monorepo & Deployment
+Turborepo
+pnpm
+Vercel — Frontend
+Render — HTTP API
+Render — WebSocket server
 
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `@next/eslint-plugin-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
+🏗️ Project Architecture--------
 
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
+EXCALIDRAW/
+│
+├── apps/
+│   │
+│   ├── web/
+│   │   └── Next.js frontend
+│   │
+│   ├── http-backend/
+│   │   └── Express REST API
+│   │
+│   └── ws-backend/
+│       └── WebSocket server
+│
+├── packages/
+│   │
+│   ├── backend-common/
+│   │   └── Shared backend configuration
+│   │
+│   └── db-stable/
+│       └── Prisma + PostgreSQL
+│
+├── package.json
+├── pnpm-workspace.yaml
+├── turbo.json
+└── README.md
+🔄 How It Works
 
-### Utilities
+Sketchly uses three main services:
 
-This Turborepo has some additional tools already setup for you:
+                 ┌─────────────────────┐
+                 │      Next.js        │
+                 │      Frontend       │
+                 │      Vercel         │
+                 └──────────┬──────────┘
+                            │
+              ┌─────────────┴─────────────┐
+              │                           │
+              ▼                           ▼
+   ┌─────────────────────┐     ┌─────────────────────┐
+   │    HTTP Backend     │     │    WebSocket        │
+   │      Express        │     │      Backend        │
+   │      Render         │     │      Render         │
+   └──────────┬──────────┘     └──────────┬──────────┘
+              │                           │
+              └─────────────┬─────────────┘
+                            ▼
+                 ┌─────────────────────┐
+                 │     PostgreSQL       │
+                 │       Neon           │
+                 └─────────────────────┘
+HTTP Backend -------
 
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
+Handles:
 
-### Build
+Authentication
+User management
+Room creation
+Room retrieval
+Room joining
+Drawing persistence
+Database operations
+WebSocket Backend
 
-To build all apps and packages, run the following command:
+Handles real-time events such as:
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+Joining rooms
+Leaving rooms
+Drawing synchronization
+Cursor movement
+Chat messages
+Connected users
+🔌 API Overview
+Authentication
+Signup
+POST /signup
+Signin
+POST /signin
+Rooms
+Create Room
+POST /room
 
-```sh
-cd my-turborepo
-turbo build
-```
+Example request:
 
-Without global `turbo`, use your package manager:
+{
+  "name": "My Drawing Room"
+}
+Get User Rooms
+GET /rooms
+Get / Join Room
+GET /room/:roomId
 
-```sh
-cd my-turborepo
-npx turbo build
-pnpm exec turbo build
-pnpm exec turbo build
-```
+Protected routes use:
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+Authorization: Bearer <JWT_TOKEN>
+🔌 WebSocket Events
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+The WebSocket server handles events including:
 
-```sh
-turbo build --filter=docs
-```
+join_room
+leave_room
+get_chats
+chat
+drawing
+cursor_move
 
-Without global `turbo`:
+This allows multiple users inside the same room to receive updates without refreshing the page.
 
-```sh
-npx turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-```
+🗄️ Database ------
 
-### Develop
+Sketchly uses PostgreSQL with Prisma ORM.
 
-To develop all apps and packages, run the following command:
+The database stores application data such as:
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+Users
+Rooms
+Drawings
+Chats
 
-```sh
-cd my-turborepo
-turbo dev
-```
+The drawing state is persisted so that users can reload a room without losing the previously saved canvas.
 
-Without global `turbo`, use your package manager:
+⚙️ Getting Started
+Prerequisites
 
-```sh
-cd my-turborepo
-npx turbo dev
-pnpm exec turbo dev
-pnpm exec turbo dev
-```
+Make sure you have installed:
 
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+Node.js
+pnpm
+PostgreSQL / Neon database
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+Recommended Node.js version:
 
-```sh
-turbo dev --filter=web
-```
+Node.js 24+
 
-Without global `turbo`:
+Check your versions:
 
-```sh
-npx turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-```
+node -v
+pnpm -v
 
-### Remote Caching
+📥 Installation -----------------
 
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
+Clone the repository:
 
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
+git clone https://github.com/Shivank-pundir/EXCALIDRAW.git
 
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
+Move into the project:
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+cd EXCALIDRAW
 
-```sh
-cd my-turborepo
-turbo login
-```
+Install dependencies:
 
-Without global `turbo`, use your package manager:
+pnpm install
 
-```sh
-cd my-turborepo
-npx turbo login
-pnpm exec turbo login
-pnpm exec turbo login
-```
+🔐 Environment Variables ----------
 
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
+You need environment variables for the backend and frontend.
 
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
+HTTP Backend
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+Create:
 
-```sh
-turbo link
-```
+apps/http-backend/.env
 
-Without global `turbo`:
+Add:
 
-```sh
-npx turbo link
-pnpm exec turbo link
-pnpm exec turbo link
-```
+DATABASE_URL=your_postgresql_connection_string
+JWT_SECRET=your_jwt_secret
+WebSocket Backend
 
-## Useful Links
+Create:
 
-Learn more about the power of Turborepo:
+apps/ws-backend/.env
 
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+Add:
+
+DATABASE_URL=your_postgresql_connection_string
+JWT_SECRET=your_jwt_secret
+Frontend
+
+Create:
+
+apps/web/.env.local
+
+For local development:
+
+NEXT_PUBLIC_HTTP_BACKEND_URL=http://localhost:4000
+NEXT_PUBLIC_WS_BACKEND_URL=ws://localhost:8080
+
+Never commit .env, .env.local, or other files containing secrets to GitHub.
+
+🧬 Database Setup --------------
+
+Generate the Prisma client:
+
+pnpm --filter db-stable exec prisma generate
+
+If migrations are required:
+
+pnpm --filter db-stable exec prisma migrate dev
+▶️ Running the Project Locally
+
+Because Sketchly contains multiple applications, run the services separately.
+
+1. Start HTTP Backend
+pnpm --filter http-backend dev
+
+The API runs on:
+
+http://localhost:4000
+2. Start WebSocket Backend
+pnpm --filter ws-backend dev
+
+The WebSocket server runs on:
+
+ws://localhost:8080
+3. Start Frontend
+pnpm --filter web dev
+
+Open:
+
+http://localhost:3000
+🏭 Production Build
+
+Build the frontend:
+pnpm --filter web build
+
+Build the HTTP backend:
+
+pnpm --filter http-backend build
+
+Build the WebSocket backend:
+
+pnpm --filter ws-backend build
+
+🌐 Deployment -------------
+
+Frontend
+
+The Next.js frontend is deployed using Vercel.
+
+Production environment variables:
+
+NEXT_PUBLIC_HTTP_BACKEND_URL=https://sketchly-http-backend-kv00.onrender.com
+NEXT_PUBLIC_WS_BACKEND_URL=wss://sketchly-ws-backend-m4zw.onrender.com
+HTTP Backend
+
+The Express API is deployed using Render.
+
+Production API:
+
+https://sketchly-http-backend-kv00.onrender.com
+WebSocket Backend
+
+The WebSocket server is deployed using Render.
+
+Production WebSocket endpoint:
+
+wss://sketchly-ws-backend-m4zw.onrender.com
+🔒 Security
+
+Sketchly implements several security mechanisms:
+
+JWT authentication
+Password hashing using bcrypt
+Protected API routes
+Authorization headers
+Environment variables for secrets
+CORS configuration
+Server-side authentication checks
+
+Secrets such as database credentials and JWT keys are never stored directly in the source code.
+
+📸 Screenshots
+
+Add screenshots of your application here.
+
+For example:
+
+screenshots/
+├── login.png
+├── dashboard.png
+├── whiteboard.png
+└── collaboration.png
+
+Then add them to this README:
+
+![Login](screenshots/login.png)
+
+![Dashboard](screenshots/dashboard.png)
+
+![Collaborative Whiteboard](screenshots/whiteboard.png)
+🧠 Key Technical Highlights
+
+Some of the main technical challenges solved in this project include:
+
+Real-Time Drawing Synchronization
+
+Drawing operations are sent through WebSockets so that changes made by one user can be reflected for other users inside the same room.
+
+Cursor Synchronization
+
+Each connected user's cursor position is synchronized through WebSocket events, allowing collaborators to see each other's activity in real time.
+
+Persistent Canvas
+
+Drawing data is stored in PostgreSQL so the canvas can be restored when a user reloads the room.
+
+Monorepo Architecture
+
+Turborepo is used to manage multiple applications and shared packages inside a single repository.
+
+Shared Backend Configuration
+
+Common backend configuration is maintained inside shared packages instead of duplicating configuration across services.
+
+📚 What I Learned
+
+Building Sketchly helped me gain practical experience with:
+
+Next.js App Router
+TypeScript
+Turborepo monorepos
+Express.js
+WebSockets
+Real-time application architecture
+JWT authentication
+PostgreSQL
+Prisma ORM
+REST APIs
+CORS
+State management
+Collaborative application design
+Vercel deployment
+Render deployment
+Environment variable management
+🔮 Future Improvements
+
+Potential improvements for future versions:
+
+ More advanced drawing tools
+ Image upload
+ Sticky notes
+ Shapes library
+ Better mobile support
+ Room permissions
+ Owner/admin controls
+ Collaborative text editing
+ Improved undo/redo synchronization
+ Version history
+ Export canvas as PNG/PDF
+ Improved performance for large drawings
+👨‍💻 Author
+
+Shivank Pundir
+
+Full-Stack Developer focused on building scalable and real-time web applications.
+
+Profiles
+GitHub: https://github.com/Shivank-pundir
+LinkedIn: https://www.linkedin.com/in/shivank-pundir-9919b431a/
+LeetCode: https://leetcode.com/shivapundir/
+⭐ Support
+
+If you find this project useful or interesting, consider giving the repository a ⭐ on GitHub.
+
+📄 License
+
+This project is intended for educational and portfolio purposes.
